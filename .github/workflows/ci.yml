@@ -4,7 +4,6 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -14,6 +13,17 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: department
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/department
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,3 +34,10 @@ jobs:
       - run: yarn lint
       - run: yarn typecheck
       - run: yarn build
+      - name: Apply migrations
+        run: yarn migration:run:prod
+      - name: Boot API and run smoke checks
+        run: |
+          node dist/main.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:4000/health && break; sleep 1; done
+          yarn smoke || (cat api.log; exit 1)

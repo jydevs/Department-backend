@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { Module } from "@nestjs/common";
 import { APP_FILTER, APP_GUARD, APP_PIPE } from "@nestjs/core";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { LoggerModule } from "nestjs-pino";
 import { ZodValidationPipe } from "nestjs-zod";
+import { ClockModule } from "./common/clock/clock";
+import { StorefrontThrottlerGuard } from "./common/throttle/storefront-throttler.guard";
 import { AllExceptionsFilter } from "./common/errors/all-exceptions.filter";
 import { AppConfigModule, ENV } from "./config/config.module";
 import type { Env } from "./config/env";
@@ -30,8 +32,19 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
           },
           // credentials never reach the logs
           redact: {
-            paths: ["req.headers.authorization", "req.headers.cookie", 'res.headers["set-cookie"]'],
+            paths: [
+              "req.headers.authorization",
+              "req.headers.cookie",
+              'req.headers["x-api-key"]',
+              'req.headers["x-storefront-key"]',
+              'req.headers["x-event-checksum"]',
+              'res.headers["set-cookie"]',
+            ],
             censor: "[redacted]",
+          },
+          // never log the query string (tokens, emails) — path only
+          serializers: {
+            req: (req: { id: string; method: string; url: string }) => ({ id: req.id, method: req.method, url: (req.url ?? "").split("?")[0] }),
           },
           // health probes are noise
           autoLogging: { ignore: (req) => ["/health", "/ready"].includes(req.url ?? "") },
@@ -45,6 +58,7 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
       useFactory: (env: Env) => [{ name: "default", ttl: env.THROTTLE_TTL_MS, limit: env.THROTTLE_LIMIT }],
     }),
 
+    ClockModule,
     DatabaseModule,
     HealthModule,
   ],
@@ -52,7 +66,7 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
     // every request body/query/params is validated with Zod (DTOs from createZodDto)
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: StorefrontThrottlerGuard },
   ],
 })
 export class AppModule {}

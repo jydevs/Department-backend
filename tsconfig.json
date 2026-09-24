@@ -3,8 +3,10 @@
     "module": "commonjs",
     "moduleResolution": "node10",
     "target": "ES2022",
-    "lib": ["ES2023"],
-    "declaration": true,
+    "lib": [
+      "ES2023"
+    ],
+    "declaration": false,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -21,5 +23,8 @@
     "noFallthroughCasesInSwitch": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "scripts/**/*.ts"]
+  "include": [
+    "src/**/*",
+    "scripts/**/*.ts"
+  ]
 }

@@ -1,20 +1,13 @@
 import "reflect-metadata";
-import { join } from "node:path";
 import { DataSource } from "typeorm";
-import { loadDotEnv } from "../config/env";
-import { SnakeNamingStrategy } from "./snake-naming.strategy";
+import { loadDotEnv, loadEnv } from "../config/env";
+import { buildDbOptions } from "./db-options";
 
 loadDotEnv();
 
 /**
- * DataSource used ONLY by the TypeORM CLI (`yarn migration:*`).
- * The running app builds its own connection in DatabaseModule.
+ * DataSource used ONLY by the TypeORM CLI (`yarn migration:*`). It validates the
+ * environment with the same schema as the app and builds options through the same
+ * function, so a bad DATABASE_URL / SSL setting fails here with a readable message.
  */
-export default new DataSource({
-  type: "postgres",
-  url: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
-  entities: [join(__dirname, "..", "**", "*.entity.{ts,js}")],
-  migrations: [join(__dirname, "migrations", "*.{ts,js}")],
-  namingStrategy: new SnakeNamingStrategy(),
-});
+export default new DataSource(buildDbOptions(loadEnv()));

@@ -2,7 +2,7 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logge
 import type { Request, Response } from "express";
 import { QueryFailedError } from "typeorm";
 import { ZodValidationException } from "nestjs-zod";
-import type { ZodError } from "zod";
+import { ZodError } from "zod";
 
 /** Uniform error body for every failure. Never leaks stack traces or SQL. */
 export interface ErrorBody {
@@ -20,17 +20,49 @@ const STATUS_TEXT: Record<number, string> = {
   403: "Forbidden",
   404: "Not Found",
   409: "Conflict",
+  413: "Payload Too Large",
+  415: "Unsupported Media Type",
   422: "Unprocessable Entity",
   429: "Too Many Requests",
   500: "Internal Server Error",
   503: "Service Unavailable",
 };
 
-/** PostgreSQL SQLSTATE codes we translate into client errors. */
-const PG_UNIQUE_VIOLATION = "23505";
-const PG_FOREIGN_KEY_VIOLATION = "23503";
-const PG_NOT_NULL_VIOLATION = "23502";
-const PG_CHECK_VIOLATION = "23514";
+const DEFAULT_CODES: Record<number, string> = {
+  400: "BAD_REQUEST",
+  401: "UNAUTHORIZED",
+  403: "FORBIDDEN",
+  404: "NOT_FOUND",
+  409: "CONFLICT",
+  413: "PAYLOAD_TOO_LARGE",
+  415: "UNSUPPORTED_MEDIA_TYPE",
+  429: "RATE_LIMITED",
+  503: "SERVICE_UNAVAILABLE",
+};
+
+/** PostgreSQL SQLSTATE → client error. Anything not listed is a 500. */
+const PG: Record<string, [status: number, code: string, message: string]> = {
+  "23505": [409, "CONFLICT", "A record with these values already exists"],
+  "23503": [409, "CONFLICT", "The record is referenced by, or references, another record"],
+  "23502": [400, "VALIDATION_ERROR", "The data violates a database constraint"],
+  "23514": [400, "VALIDATION_ERROR", "The data violates a database constraint"],
+  "22P02": [400, "BAD_REQUEST", "Malformed value in request"], // invalid_text_representation (bad uuid…)
+  "22001": [400, "VALIDATION_ERROR", "A value is too long"],
+  "22003": [400, "VALIDATION_ERROR", "A number is out of range"],
+  "40001": [409, "CONCURRENT_UPDATE", "The resource was modified concurrently, please retry"],
+  "40P01": [409, "CONCURRENT_UPDATE", "The resource was modified concurrently, please retry"],
+  "55P03": [409, "CONCURRENT_UPDATE", "The resource is locked by another operation, please retry"],
+  "57014": [503, "SERVICE_UNAVAILABLE", "The request took too long"], // statement_timeout
+};
+
+/** Error shape thrown by express / body-parser / http-errors (413, 415, aborted, bad JSON…). */
+interface HttpLikeError {
+  status?: number;
+  statusCode?: number;
+  expose?: boolean;
+  type?: string;
+  message?: string;
+}
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -46,51 +78,63 @@ export class AllExceptionsFilter implements ExceptionFilter {
     body.requestId = requestId;
 
     if (body.statusCode >= 500) {
-      this.logger.error({ err: exception, requestId, path: req.url }, "Unhandled error");
+      // sanitized: no SQL, no bound parameters, no query string (tokens/PII can live there)
+      this.logger.error({ err: this.safeError(exception), requestId, method: req.method, path: req.path }, "Unhandled error");
     }
 
     if (res.headersSent) return;
     res.status(body.statusCode).json(body);
   }
 
+  private safeError(e: unknown) {
+    if (e instanceof QueryFailedError) {
+      const d = e.driverError as { code?: string; constraint?: string; table?: string } | undefined;
+      return { type: "QueryFailedError", pgCode: d?.code, constraint: d?.constraint, table: d?.table };
+    }
+    if (e instanceof Error) return { type: e.name, message: e.message, stack: e.stack };
+    return { type: typeof e };
+  }
+
   private toBody(exception: unknown): ErrorBody {
     if (exception instanceof ZodValidationException) {
-      const zodError = exception.getZodError() as ZodError;
-      const issues = zodError.issues.map((i) => ({
-        path: i.path.join("."),
-        message: i.message,
-        code: i.code,
-      }));
-      return this.build(400, "VALIDATION_ERROR", "Request validation failed", issues);
+      const zodError = exception.getZodError();
+      if (zodError instanceof ZodError) {
+        const issues = zodError.issues.map((i) => ({ path: i.path.join("."), message: i.message, code: i.code }));
+        return this.build(400, "VALIDATION_ERROR", "Request validation failed", issues);
+      }
+      return this.build(400, "VALIDATION_ERROR", "Request validation failed");
     }
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
+      // never echo framework text for 5xx: it can carry internals
+      if (status >= 500 && !(exception as { code?: unknown }).code) {
+        return this.build(status, DEFAULT_CODES[status] ?? "INTERNAL_ERROR", status === 503 ? "Service temporarily unavailable" : "Internal server error");
+      }
       const payload = exception.getResponse();
       const message =
         typeof payload === "string"
           ? payload
           : Array.isArray((payload as { message?: unknown }).message)
-            ? ((payload as { message: string[] }).message).join("; ")
+            ? (payload as { message: string[] }).message.join("; ")
             : ((payload as { message?: string }).message ?? exception.message);
-      const code = (payload as { code?: string }).code ?? this.defaultCode(status);
+      const code = (payload as { code?: string }).code ?? DEFAULT_CODES[status] ?? (status >= 500 ? "INTERNAL_ERROR" : "ERROR");
       const details = (payload as { details?: unknown }).details;
       return this.build(status, code, message, details);
     }
 
     if (exception instanceof QueryFailedError) {
-      const pgCode = (exception.driverError as { code?: string } | undefined)?.code;
-      switch (pgCode) {
-        case PG_UNIQUE_VIOLATION:
-          return this.build(409, "CONFLICT", "A record with these values already exists");
-        case PG_FOREIGN_KEY_VIOLATION:
-          return this.build(409, "CONFLICT", "The record is referenced by, or references, another record");
-        case PG_NOT_NULL_VIOLATION:
-        case PG_CHECK_VIOLATION:
-          return this.build(400, "VALIDATION_ERROR", "The data violates a database constraint");
-        default:
-          break;
-      }
+      const pg = PG[(exception.driverError as { code?: string } | undefined)?.code ?? ""];
+      if (pg) return this.build(pg[0], pg[1], pg[2]);
+    }
+
+    // body-parser / http-errors: malformed JSON, payload too large, wrong content type, aborted request
+    const http = exception as HttpLikeError;
+    const status = http?.status ?? http?.statusCode;
+    if (typeof status === "number" && status >= 400 && status < 500 && http.expose !== false) {
+      const message =
+        status === 413 ? "Request body is too large" : status === 415 ? "Unsupported content type" : http.type === "entity.parse.failed" ? "Malformed JSON body" : "Bad request";
+      return this.build(status, DEFAULT_CODES[status] ?? "BAD_REQUEST", message);
     }
 
     return this.build(500, "INTERNAL_ERROR", "Internal server error");
@@ -104,24 +148,5 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message,
       ...(details !== undefined ? { details } : {}),
     };
-  }
-
-  private defaultCode(status: number): string {
-    switch (status) {
-      case 400:
-        return "BAD_REQUEST";
-      case 401:
-        return "UNAUTHORIZED";
-      case 403:
-        return "FORBIDDEN";
-      case 404:
-        return "NOT_FOUND";
-      case 409:
-        return "CONFLICT";
-      case 429:
-        return "RATE_LIMITED";
-      default:
-        return status >= 500 ? "INTERNAL_ERROR" : "ERROR";
-    }
   }
 }

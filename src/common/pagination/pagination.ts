@@ -1,19 +1,19 @@
-import { BadRequestException } from "@nestjs/common";
 import { createZodDto } from "nestjs-zod";
 import { z } from "zod";
+import { AppException } from "../errors/app-exception";
 
 /* ── request side ─────────────────────────────────────────── */
 
 /** Cursor (keyset) pagination: for storefront feeds where offsets would drift. */
 export const cursorQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(24),
+  limit: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(1).max(100).default(24)),
   cursor: z.string().max(512).optional(),
 });
 export class CursorQueryDto extends createZodDto(cursorQuerySchema) {}
 
 /** Page/size pagination: for admin tables that need a total and page jumps. */
 export const pageQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(1000).default(1), // deep OFFSETs are slow: cap them
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 export class PageQueryDto extends createZodDto(pageQuerySchema) {}
@@ -64,5 +64,5 @@ export function decodeCursor<S extends z.ZodType>(cursor: string, shape: S): z.i
   } catch {
     /* fall through */
   }
-  throw new BadRequestException({ code: "INVALID_CURSOR", message: "Invalid pagination cursor" });
+  throw AppException.badRequest("INVALID_CURSOR", "Invalid pagination cursor");
 }

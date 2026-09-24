@@ -2,11 +2,13 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import type { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
 import { Logger } from "nestjs-pino";
 import { cleanupOpenApiDoc } from "nestjs-zod";
 import { AppModule } from "./app.module";
 import { ENV } from "./config/config.module";
+import { requestContextMiddleware } from "./common/context/request-context";
 import { Env, loadDotEnv } from "./config/env";
 
 /** Global prefix for the versioned API. Ops endpoints stay at the root. */
@@ -16,24 +18,28 @@ const UNPREFIXED = ["health", "ready", "version"];
 async function bootstrap() {
   loadDotEnv();
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
   const env = app.get<Env>(ENV);
   const logger = app.get(Logger);
   app.useLogger(logger);
   app.enableShutdownHooks();
 
-  if (env.TRUST_PROXY) app.set("trust proxy", 1);
+  if (env.TRUST_PROXY !== false) app.set("trust proxy", env.TRUST_PROXY);
+  app.useBodyParser("json", { limit: "1mb" });
+  app.use(requestContextMiddleware);
   app.disable("x-powered-by");
 
-  // Swagger UI needs inline scripts; the JSON API itself has no use for a CSP.
-  app.use(helmet({ contentSecurityPolicy: env.DOCS_ENABLED ? false : undefined }));
+  // Swagger UI needs inline scripts: relax the CSP only on /docs, keep it strict everywhere else.
+  const strict = helmet();
+  const relaxed = helmet({ contentSecurityPolicy: false });
+  app.use((req: Request, res: Response, next: NextFunction) => (env.DOCS_ENABLED && req.path.startsWith("/docs") ? relaxed : strict)(req, res, next));
 
   app.enableCors({
     origin: env.CORS_ORIGINS,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
-    exposedHeaders: ["X-Request-Id"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "Idempotency-Key", "If-Match"],
+    exposedHeaders: ["X-Request-Id", "Retry-After", "ETag"],
     maxAge: 600,
   });
 
