@@ -5,7 +5,7 @@ Shopify**: catálogo, inventario, pedidos, clientes, descuentos, envíos **y tam
 diseño de la tienda** (secciones de la home, menús, páginas, ajustes del tema), todo administrado por
 personal con roles y permisos.
 
-> Estado: **propuesta para aprobación.** Marcadas con ❓ las decisiones abiertas (ver §10).
+> Estado: **plan aprobado** (decisiones en §10). Fase 0 en curso. ❓ = pendiente.
 
 ---
 
@@ -36,12 +36,12 @@ personal con roles y permisos.
 | Archivos | S3 compatible (Cloudflare R2) con URL prefirmadas; disco local en dev |
 | Jobs | Cola en Postgres (pg-boss) → emails, webhooks, importaciones, reservas de stock que expiran |
 | Emails | Resend (o SMTP) con plantillas editables desde el admin |
-| Pagos | Interfaz `PaymentProvider` + primer proveedor ❓ (Wompi recomendado) |
+| Pagos | Interfaz `PaymentProvider` + primer proveedor **Wompi** |
 | Observabilidad | pino (JSON), request-id, `/health` y `/ready` |
 | Deploy | Railway / Fly (API) + Neon (BD) + R2 (media) ❓ |
 
 Repos: `Department-backend` (API), `Department-frontend` (tienda, consume `/storefront`),
-`Department-admin` ❓ (panel de administración, consume `/admin`).
+`Department-admin` (panel de administración, consume `/admin`).
 
 ## 3. Módulos (NestJS)
 
@@ -187,7 +187,7 @@ Prefijo `/api/v1`. **Auth**: `—` público · `C` cliente · `A:<permiso>` pers
 
 | # | Parte | Entregable |
 | --- | --- | --- |
-| 0 | **Fundación** | Scaffold Nest, Prisma, config validada, errores/paginación, OpenAPI, health, CI, BD dev embebida, seed con el catálogo y contenido actuales |
+| 0 | **Fundación** | Scaffold Nest, TypeORM, config validada, errores/paginación, OpenAPI, health, CI, BD dev embebida, seed con el catálogo y contenido actuales |
 | 1 | **Identidad y accesos** | Staff, roles/permisos, sesiones, 2FA, API keys, auditoría, auth de clientes |
 | 2 | **Catálogo e inventario** | Productos/variantes/opciones/media/colecciones/metafields, búsqueda, endpoints storefront + admin |
 | 3 | **Contenido (CMS)** | Ajustes, menús, páginas, plantillas/secciones, versiones, publicar/programar, vista previa, redirecciones |
