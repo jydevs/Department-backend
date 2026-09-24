@@ -1,6 +1,6 @@
 # Department-backend — Plan de arquitectura y ejecución
 
-Backend headless para **Daregular Dept.**, pensado para que la tienda sea **tan editable como en
+Backend headless (NestJS + TypeORM + PostgreSQL) para **Daregular Dept.**, pensado para que la tienda sea **tan editable como en
 Shopify**: catálogo, inventario, pedidos, clientes, descuentos, envíos **y también el contenido y el
 diseño de la tienda** (secciones de la home, menús, páginas, ajustes del tema), todo administrado por
 personal con roles y permisos.
@@ -29,7 +29,7 @@ personal con roles y permisos.
 | --- | --- |
 | Framework | **NestJS 11** (monolito modular) + TypeScript estricto |
 | BD | **PostgreSQL** (Neon / Supabase / Railway en prod). Dev sin Docker: `embedded-postgres` |
-| ORM | **Prisma** (migraciones versionadas) |
+| ORM | **TypeORM** (entidades + migraciones versionadas; `synchronize` siempre apagado) |
 | API | REST `/api/v1` + **OpenAPI** (`/docs`) → cliente TS generado para front y admin |
 | Validación | **Zod** (DTOs y esquemas de secciones del CMS) |
 | Auth | Staff: email + contraseña (**argon2id**) + refresh rotativo + 2FA TOTP opcional · Clientes: email + contraseña / enlace mágico · Integraciones: API keys con scopes |
@@ -46,7 +46,7 @@ Repos: `Department-backend` (API), `Department-frontend` (tienda, consume `/stor
 ## 3. Módulos (NestJS)
 
 ```
-common/        config(zod-env) · prisma · guards · pagination · errors · audit · queue · storage
+common/        config(zod-env) · database(typeorm) · guards · pagination · errors · audit · queue · storage
 identity/      staff · roles · api-keys · customers-auth · 2fa · sessions
 catalog/       products · variants · options · media · collections · tags · metafields · search
 inventory/     locations · levels · adjustments · reservations
@@ -203,7 +203,7 @@ para probar con datos reales).
 ## 9. Cómo trabajan los agentes
 
 ```
-Orquestador (yo)   escribe el CONTRATO del módulo: modelos Prisma, DTOs/Zod, endpoints, permisos,
+Orquestador (yo)   escribe el CONTRATO del módulo: entidades TypeORM, DTOs/Zod, endpoints, permisos,
       │            criterios de aceptación y archivos que el módulo posee
       ▼
 Escritor (haiku)   implementa UN módulo en su propio worktree/rama; no toca archivos compartidos;
@@ -225,15 +225,15 @@ mass-assignment · rate limiting en auth/checkout · consistencia de estados de 
 Reglas de git iguales que en el front: una rama por parte, commits pequeños, **nada a `main` sin tu
 aprobación**. Los módulos independientes (p. ej. 2 y 3) se escriben en paralelo tras la Fundación.
 
-## 10. Decisiones abiertas ❓
+## 10. Decisiones (resueltas)
 
-1. **Stack** — NestJS + Prisma + PostgreSQL (recomendado) vs. otro.
-2. **Pasarela de pago** — Wompi (recomendado) · Bold · Mercado Pago · PayU · solo contra-entrega por ahora.
-3. **Panel admin** — app separada `Department-admin` (recomendado) vs. dentro del front en `/admin`.
-4. **Pruebas** — solo *smoke scripts* + auditor (recomendado por eficiencia), o pruebas automáticas
-   únicamente para checkout / pagos / stock, o cobertura completa.
-5. **Hosting BD/API** — cuentas de Neon/Supabase, Railway/Fly, R2 (se necesitan credenciales para
-   el despliegue; el desarrollo local no las requiere).
+| # | Decisión | Elegido |
+| --- | --- | --- |
+| 1 | Stack | **NestJS + TypeORM + PostgreSQL** |
+| 2 | Pasarela de pago | **Wompi** (detrás de `PaymentProvider`, intercambiable) |
+| 3 | Panel admin | **App separada `Department-admin`** |
+| 4 | Pruebas | **Smoke scripts + auditor Opus** (sin suites; revisión reforzada en dinero/stock/pagos) |
+| 5 | Hosting | ❓ pendiente (se necesita solo para desplegar: Neon/Supabase, Railway/Fly, R2) |
 
 ## 11. Fuera de alcance de la primera versión
 
