@@ -1,0 +1,58 @@
+import { randomUUID } from "node:crypto";
+import { Module } from "@nestjs/common";
+import { APP_FILTER, APP_GUARD, APP_PIPE } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { LoggerModule } from "nestjs-pino";
+import { ZodValidationPipe } from "nestjs-zod";
+import { AllExceptionsFilter } from "./common/errors/all-exceptions.filter";
+import { AppConfigModule, ENV } from "./config/config.module";
+import type { Env } from "./config/env";
+import { DatabaseModule } from "./database/database.module";
+import { HealthModule } from "./health/health.module";
+
+/** Accept a caller-supplied request id only if it is short and made of safe characters. */
+const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
+
+@Module({
+  imports: [
+    AppConfigModule,
+
+    LoggerModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env: Env) => ({
+        pinoHttp: {
+          level: env.LOG_LEVEL,
+          genReqId: (req, res) => {
+            const incoming = req.headers["x-request-id"];
+            const id = typeof incoming === "string" && SAFE_REQUEST_ID.test(incoming) ? incoming : randomUUID();
+            res.setHeader("x-request-id", id);
+            return id;
+          },
+          // credentials never reach the logs
+          redact: {
+            paths: ["req.headers.authorization", "req.headers.cookie", 'res.headers["set-cookie"]'],
+            censor: "[redacted]",
+          },
+          // health probes are noise
+          autoLogging: { ignore: (req) => ["/health", "/ready"].includes(req.url ?? "") },
+          transport: env.NODE_ENV === "development" ? { target: "pino-pretty", options: { singleLine: true } } : undefined,
+        },
+      }),
+    }),
+
+    ThrottlerModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env: Env) => [{ name: "default", ttl: env.THROTTLE_TTL_MS, limit: env.THROTTLE_LIMIT }],
+    }),
+
+    DatabaseModule,
+    HealthModule,
+  ],
+  providers: [
+    // every request body/query/params is validated with Zod (DTOs from createZodDto)
+    { provide: APP_PIPE, useClass: ZodValidationPipe },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
+})
+export class AppModule {}
