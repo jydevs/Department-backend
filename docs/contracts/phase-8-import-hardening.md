@@ -1,0 +1,28 @@
+# Fase 8 — Importador Shopify y endurecimiento (contrato)
+
+Reglas globales: las de fases anteriores (TS estricto sin `any`, Zod, `AppException`, `TransactionService`, `AuditService`, `Clock`, permisos, SQL parametrizado, sin tests, DTO explícitos).
+
+## Importador por CSV — `src/imports/**`
+No hay acceso a la API de Shopify: se importa desde los CSV que exporta el admin de Shopify (Productos y Clientes).
+- Entidad `ImportJob` (`import_jobs`): type (`products|customers`), status (`queued|running|done|failed|cancelled`), dryRun bool, fileName varchar(255), fileSha256, totalRows int, processedRows int, createdCount, updatedCount, skippedCount, errorCount, errors jsonb (máx 200 entradas `{row, code, message}`), startedAt, finishedAt, createdBy uuid. `VersionedEntity`.
+- Endpoints (permisos `import:read` / `import:write`, añadidos por el orquestador): `POST /admin/import/jobs` (multipart, campo `file` CSV ≤ 10 MB, campos `type`, `dryRun`), `GET /admin/import/jobs` (paginado), `GET /admin/import/jobs/:id` (progreso + errores), `POST /admin/import/jobs/:id/cancel`. La subida NO procesa en la petición: guarda el CSV en el `StorageDriver` privado (carpeta `UPLOAD_DIR/imports`, NUNCA servida por `/media`) y encola; un `ImportWorker` in-process (intervalo 5 s, `FOR UPDATE SKIP LOCKED`, un job a la vez por instancia) procesa por lotes de 50 filas, cada lote en su transacción, actualizando el progreso.
+- Parser: `csv-parse` (dependencia nueva, modo estricto de comillas, `bom: true`, `relax_column_count: false`, límite 5000 filas y 64 columnas, celdas ≤ 100 000 caracteres). Prefijos de fórmula no se ejecutan (no se evalúa nada), pero al EXPORTAR CSV siempre se escapan.
+- Productos (formato Shopify: `Handle, Title, Body (HTML), Vendor, Type, Tags, Published, Option1..3 Name/Value, Variant SKU, Variant Grams, Variant Inventory Tracker, Variant Inventory Qty, Variant Inventory Policy, Variant Price, Variant Compare At Price, Variant Barcode, Image Src, Image Position, Image Alt Text, SEO Title, SEO Description, Status`): las filas con el mismo `Handle` son un producto (variantes e imágenes adicionales); upsert por handle (actualiza título/descr/tags/SEO, reconcilia variantes por SKU o por combinación de opciones); `Published=true`/`Status=active` → active, si no draft; precios en COP enteros (acepta `189000` y `189000.00`; rechaza negativos/NaN); stock inicial (`Variant Inventory Qty`) como ajuste `received` en la ubicación default; imágenes: solo URLs `https://` (NO se descargan: se guarda la URL en `Media` — dejar constancia de que la migración de archivos a `/media` es un paso manual posterior); **`Body (HTML)` se SANEA** con `sanitize-html` (lista blanca: p, br, strong, em, ul, ol, li, h2, h3, h4, a[href https/mailto/tel], img[src https]); `Tags` separados por coma (máx 50, ≤ 50 chars).
+- Clientes (`Email, First Name, Last Name, Phone, Accepts Email Marketing, Default Address ...`): crea `Customer` invitado sin contraseña (passwordHash null) con consentimiento SOLO si `Accepts Email Marketing = yes`; upsert por email en minúsculas; direcciones por defecto opcionales; los clientes importados deben registrarse/restablecer contraseña para tener cuenta.
+- `dryRun=true`: valida todo y reporta conteos y errores sin escribir nada (transacción con rollback forzado o análisis previo).
+- Auditoría de cada job (inicio/fin) y errores por fila sin volcar datos personales completos en el log.
+- Requiere que existan las fases 2 y 5 (productos y clientes); en la fase 8 se codifica contra sus servicios/entidades.
+
+## Mantenimiento y endurecimiento — `src/maintenance/**`
+- `MaintenanceService` (cada hora; un solo ejecutor entre instancias con `pg_try_advisory_lock`): purga `refresh_tokens` expirados/revocados > 30 días, `customer_refresh_tokens` y `customer_tokens` expirados > 7 días, `idempotency_keys` > 7 días, `processed_events` > 90 días, `email_outbox` enviados > 30 días, `content_versions` `cancelled|superseded` con más de 100 por documento (conserva las 100 más recientes), `import_jobs` > 180 días y sus CSV; siempre en lotes de 1000 con `LIMIT` y registrando el total borrado.
+- Dockerfile multi-etapa (node:22-alpine, usuario no root, `HEALTHCHECK` a `/health`, solo `dist` + prod deps), `.dockerignore`, `docker-compose.yml` de ejemplo (api + postgres 16) documentado como referencia (no se puede probar aquí: sin Docker local).
+- `scripts/export-openapi.mjs` (levanta la app o consulta `/docs-json` de una API en marcha y escribe `docs/openapi.json`), y `docs/API.md` con la guía de uso (autenticación, paginación, errores, idempotencia, webhooks, cabeceras, límites).
+- `.env.example` completo con TODAS las variables (comentadas por fase) y `README.md` de despliegue (Railway/Render + Neon/Supabase + Cloudflare R2, orden de migraciones, secretos, cron/planificadores in-process y qué pasa con varias instancias).
+- Revisión final de seguridad del código completo por un auditor Opus (informe en `docs/SECURITY-REVIEW.md` con hallazgos abiertos).
+
+## Propiedad de archivos
+- **H1** — `src/imports/**`. **H2** — `src/maintenance/**`, `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `scripts/export-openapi.mjs`, `docs/API.md`, `README.md`, `.env.example`.
+- Orquestador — módulos raíz, permisos, env, migración, smoke.
+
+## Criterio de aceptación
+CSV de ejemplo de 3 productos (con variantes, imágenes, HTML con `<script>`) → dryRun reporta conteos sin escribir → import real crea productos draft/active, stock inicial, HTML saneado; reimportar es idempotente (actualiza, no duplica); CSV con comillas mal cerradas → job `failed` con mensaje claro; clientes importados sin cuenta; el mantenimiento borra registros viejos de prueba y respeta los recientes.

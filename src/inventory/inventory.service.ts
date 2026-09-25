@@ -21,6 +21,15 @@ export const UNLIMITED_AVAILABILITY = 1_000_000_000;
 const MAX_ON_HAND = 1_000_000_000;
 const LOW_STOCK_DEFAULT = 5;
 
+/**
+ * `manager.query("UPDATE ... RETURNING id")` resolves to `[rows, affectedCount]` on the pg driver (not to the rows),
+ * so `res.length` is always 2. This returns the number of rows the statement actually touched.
+ */
+function updatedRows(res: unknown): number {
+  if (Array.isArray(res) && res.length === 2 && Array.isArray(res[0])) return res[0].length;
+  return Array.isArray(res) ? res.length : 0;
+}
+
 @Injectable()
 export class InventoryService {
   constructor(
@@ -447,7 +456,7 @@ export class InventoryService {
            WHERE id = $1 AND on_hand - reserved >= $2 RETURNING id`,
           [level.id, take, now],
         );
-        if (res.length === 0) continue;
+        if (updatedRows(res) === 0) continue;
         remaining -= take;
         if (remaining === 0) break;
       }
@@ -480,7 +489,7 @@ export class InventoryService {
            WHERE id = $1 AND reserved >= $2 RETURNING id`,
           [level.id, take, now],
         );
-        if (res.length === 0) throw AppException.conflict("INSUFFICIENT_RESERVED", "Reserved stock changed concurrently");
+        if (updatedRows(res) === 0) throw AppException.conflict("INSUFFICIENT_RESERVED", "Reserved stock changed concurrently");
         remaining -= take;
         if (remaining === 0) break;
       }
@@ -516,7 +525,7 @@ export class InventoryService {
            WHERE id = $1 AND reserved >= $2 RETURNING id`,
           [level.id, take, now],
         );
-        if (res.length === 0) throw AppException.conflict("INSUFFICIENT_RESERVED", "Reserved stock changed concurrently");
+        if (updatedRows(res) === 0) throw AppException.conflict("INSUFFICIENT_RESERVED", "Reserved stock changed concurrently");
 
         const adjustment = new InventoryAdjustment();
         adjustment.variantId = item.variantId;
@@ -534,6 +543,61 @@ export class InventoryService {
 
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_RESERVED", "Insufficient reserved quantity", { items: short });
+    }
+  }
+
+  /**
+   * Adds stock back to `on_hand` in the active default location (cancelled paid orders, refunds with restock).
+   * Untracked / backorderable variants are skipped, like `commit`. Locks in variantId order and records an
+   * InventoryAdjustment per item.
+   */
+  async restock(
+    items: { variantId: string; quantity: number }[],
+    manager: EntityManager,
+    reason: "returned" | "correction",
+  ): Promise<void> {
+    const tracked = await this.trackedItems(this.normalizeItems(items), manager);
+    if (tracked.length === 0) return;
+
+    const defaults = await manager.query<{ id: string }[]>(
+      `SELECT id FROM locations WHERE is_default = true AND is_active = true LIMIT 1`,
+    );
+    const locationId = defaults[0]?.id;
+    if (!locationId) throw AppException.conflict("NO_DEFAULT_LOCATION", "There is no active default location to restock into");
+
+    const adjRepo = manager.getRepository(InventoryAdjustment);
+    const now = this.clock.now();
+
+    for (const item of tracked) {
+      await manager.query(
+        `INSERT INTO inventory_levels (id, variant_id, location_id, on_hand, reserved, version, created_at, updated_at)
+         VALUES ($1, $2, $3, 0, 0, 1, $4, $4)
+         ON CONFLICT (variant_id, location_id) DO NOTHING`,
+        [uuidv7(), item.variantId, locationId, now],
+      );
+      const locked = await manager.query<{ id: string; on_hand: number }[]>(
+        `SELECT id, on_hand FROM inventory_levels WHERE variant_id = $1 AND location_id = $2 FOR UPDATE`,
+        [item.variantId, locationId],
+      );
+      const row = locked[0];
+      if (!row) throw AppException.conflict("CONCURRENT_UPDATE", "Inventory level was not created");
+      if (row.on_hand + item.quantity > MAX_ON_HAND) {
+        throw AppException.badRequest("QUANTITY_TOO_LARGE", `on_hand cannot exceed ${MAX_ON_HAND}`);
+      }
+
+      await manager.query(
+        `UPDATE inventory_levels SET on_hand = on_hand + $2, version = version + 1, updated_at = $3 WHERE id = $1`,
+        [row.id, item.quantity, now],
+      );
+
+      const adjustment = new InventoryAdjustment();
+      adjustment.variantId = item.variantId;
+      adjustment.locationId = locationId;
+      adjustment.delta = item.quantity;
+      adjustment.reason = reason;
+      adjustment.note = null;
+      adjustment.actorId = null;
+      await adjRepo.save(adjustment);
     }
   }
 

@@ -17,6 +17,7 @@ import { IdentityModule } from "./identity/identity.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { CmsModule } from "./cms/cms.module";
+import { CommerceModule } from "./commerce/commerce.module";
 import { HealthModule } from "./health/health.module";
 
 /** Accept a caller-supplied request id only if it is short and made of safe characters. */
@@ -73,6 +74,7 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
     InventoryModule,
     CatalogModule,
     CmsModule,
+    CommerceModule,
   ],
   providers: [
     // every request body/query/params is validated with Zod (DTOs from createZodDto)

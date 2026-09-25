@@ -13,7 +13,7 @@ import { Env, loadDotEnv } from "./config/env";
 
 /** Global prefix for the versioned API. Ops endpoints stay at the root. */
 export const API_PREFIX = "api/v1";
-const UNPREFIXED = ["health", "ready", "version", "media/*path"];
+const UNPREFIXED = ["health", "ready", "version", "media/*path", "webhooks/*path"];
 
 async function bootstrap() {
   loadDotEnv();

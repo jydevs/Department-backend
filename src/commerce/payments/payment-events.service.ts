@@ -1,0 +1,128 @@
+import { Inject, Injectable, Logger } from "@nestjs/common";
+import { v7 as uuidv7 } from "uuid";
+import { Clock } from "../../common/clock/clock";
+import { AppException } from "../../common/errors/app-exception";
+import { TransactionService } from "../../database/transaction.service";
+import { Order, Payment } from "../entities";
+import { OrdersLifecycleService } from "../orders/orders-lifecycle.service";
+import { PAYMENT_PROVIDER, PaymentProvider, VerifiedEvent, WebhookHeaders } from "./payment-provider";
+
+export type PaymentEventOutcome =
+  | "ignored"
+  | "duplicate"
+  | "unknown_reference"
+  | "mismatch"
+  | "paid"
+  | "already_paid"
+  | "late_approval"
+  | "cancelled"
+  | "no_change";
+
+/** Provider-agnostic processing of a verified payment event; shared by the webhook and the dev mock endpoint. */
+@Injectable()
+export class PaymentEventsService {
+  private readonly logger = new Logger(PaymentEventsService.name);
+
+  constructor(
+    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly transactions: TransactionService,
+    private readonly lifecycle: OrdersLifecycleService,
+    private readonly clock: Clock,
+  ) {}
+
+  /**
+   * Verifies the signature BEFORE touching anything else. Invalid / missing signature or body => a generic 401.
+   * Any error after verification propagates (500 => the gateway retries); a handled event returns normally (200).
+   */
+  async handleWebhook(headers: WebhookHeaders, rawBody: Buffer | undefined): Promise<PaymentEventOutcome> {
+    const verified = rawBody && rawBody.length > 0 ? this.provider.verifyWebhook(headers, rawBody) : null;
+    if (!verified) throw AppException.unauthorized("Invalid request");
+    return this.process(verified);
+  }
+
+  async process(verified: VerifiedEvent): Promise<PaymentEventOutcome> {
+    const parsed = this.provider.parseTransaction(verified);
+    if (!parsed || parsed.status === "pending") return "ignored";
+    const now = this.clock.now();
+
+    return this.transactions.run(async (manager): Promise<PaymentEventOutcome> => {
+      const inserted = await manager.query<{ id: string }[]>(
+        `INSERT INTO processed_events (id, provider, event_id, processed_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $4, $4)
+         ON CONFLICT (provider, event_id) DO NOTHING
+         RETURNING id`,
+        [uuidv7(), verified.provider, parsed.eventId, now],
+      );
+      if (inserted.length === 0) return "duplicate";
+
+      const order = await manager
+        .getRepository(Order)
+        .findOne({ where: { paymentReference: parsed.reference }, lock: { mode: "pessimistic_write" } });
+      if (!order) {
+        this.logger.warn(`Payment event ${parsed.eventId} references an unknown order reference`);
+        return "unknown_reference";
+      }
+
+      if (parsed.amountInCents !== order.total * 100 || parsed.currency !== order.currency.toUpperCase()) {
+        await this.lifecycle.recordEvent(manager, order.id, "payment.mismatch", {
+          providerTransactionId: parsed.providerTransactionId,
+          status: parsed.status,
+          receivedAmountInCents: parsed.amountInCents,
+          receivedCurrency: parsed.currency,
+          expectedAmountInCents: order.total * 100,
+          expectedCurrency: order.currency,
+        });
+        return "mismatch";
+      }
+
+      const paymentRepo = manager.getRepository(Payment);
+      const payment = await paymentRepo.findOne({ where: { orderId: order.id, reference: order.paymentReference }, order: { createdAt: "DESC" } });
+
+      if (parsed.status === "approved") {
+        if (order.status === "pending") {
+          await this.lifecycle.markPaid(order.id, { providerTransactionId: parsed.providerTransactionId, method: parsed.method }, manager);
+          return "paid";
+        }
+        if (order.status === "expired" || order.status === "cancelled") {
+          // Money arrived for an order we already released: never reopen it, an admin must refund.
+          if (payment) {
+            payment.status = "approved";
+            payment.rawStatus = "APPROVED";
+            payment.providerTransactionId = parsed.providerTransactionId;
+            if (parsed.method) payment.method = parsed.method;
+            await paymentRepo.save(payment);
+          }
+          await manager.query(`UPDATE orders SET payment_status = 'paid', version = version + 1, updated_at = $2 WHERE id = $1`, [order.id, now]);
+          await this.lifecycle.flagRefundPending(
+            order.id,
+            "payment.late_approval",
+            { providerTransactionId: parsed.providerTransactionId, orderStatus: order.status, amountInCents: parsed.amountInCents },
+            manager,
+          );
+          return "late_approval";
+        }
+        return "already_paid";
+      }
+
+      // declined | voided | error
+      if (order.status === "pending") {
+        if (payment) {
+          payment.status = parsed.status;
+          payment.rawStatus = parsed.status.toUpperCase();
+          payment.providerTransactionId = parsed.providerTransactionId;
+          if (parsed.method) payment.method = parsed.method;
+          await paymentRepo.save(payment);
+        }
+        await this.lifecycle.cancel(order.id, { reason: `payment_${parsed.status}`, restock: false }, manager);
+        await manager.query(`UPDATE orders SET payment_status = 'failed', version = version + 1, updated_at = $2 WHERE id = $1`, [order.id, now]);
+        return "cancelled";
+      }
+      await this.lifecycle.recordEvent(manager, order.id, "payment.status_ignored", {
+        status: parsed.status,
+        providerTransactionId: parsed.providerTransactionId,
+        orderStatus: order.status,
+      });
+      return "no_change";
+    });
+  }
+}
