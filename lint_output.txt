@@ -1,0 +1,38 @@
+﻿yarn run v1.22.22
+$ eslint .
+
+C:\Users\jolie\OneDrive\Documentos\Department\Department-backend\src\identity\auth\auth.controller.ts
+    5:32  error  'RequirePermissions' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   14:3   error  'RefreshRequestDto' is defined but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+   53:37  error  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   62:25  error  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   78:38  error  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+   92:40  error  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+  101:25  error  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+
+C:\Users\jolie\OneDrive\Documentos\Department\Department-backend\src\identity\auth\auth.guard.ts
+  1:41  error  'Inject' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\jolie\OneDrive\Documentos\Department\Department-backend\src\identity\auth\auth.module.ts
+  5:10  error  'TransactionService' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\jolie\OneDrive\Documentos\Department\Department-backend\src\identity\auth\auth.service.ts
+    1:10  error  'timingSafeEqual' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  122:16  error  Unexpected any. Specify a different type                                           @typescript-eslint/no-explicit-any
+  201:16  error  Unexpected any. Specify a different type                                           @typescript-eslint/no-explicit-any
+  227:16  error  Unexpected any. Specify a different type                                           @typescript-eslint/no-explicit-any
+  403:9   error  'update' is never reassigned. Use 'const' instead                                  prefer-const
+  450:29  error  'input' is defined but never used. Allowed unused args must match /^_/u            @typescript-eslint/no-unused-vars
+  455:15  error  Unexpected any. Specify a different type                                           @typescript-eslint/no-explicit-any
+
+✖ 16 problems (16 errors, 0 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+
+node.exe : error Command failed with exit code 1.
+En C:\Program Files\nodejs\yarn.ps1: 16 Carácter: 5
++     & "$basedir/node$exe"  "$basedir/node_modules/corepack/dist/yarn. ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (error Command failed with exit code 1.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.

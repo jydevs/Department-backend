@@ -21,7 +21,8 @@
     "migration:revert": "yarn typeorm migration:revert",
     "migration:generate": "yarn typeorm migration:generate",
     "smoke": "node scripts/smoke.mjs",
-    "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js"
+    "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
+    "owner:create": "ts-node -r tsconfig-paths/register scripts/create-owner.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11",

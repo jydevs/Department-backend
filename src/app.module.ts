@@ -10,6 +10,8 @@ import { AllExceptionsFilter } from "./common/errors/all-exceptions.filter";
 import { AppConfigModule, ENV } from "./config/config.module";
 import type { Env } from "./config/env";
 import { DatabaseModule } from "./database/database.module";
+import { AuditModule } from "./audit/audit.module";
+import { IdentityModule } from "./identity/identity.module";
 import { HealthModule } from "./health/health.module";
 
 /** Accept a caller-supplied request id only if it is short and made of safe characters. */
@@ -61,6 +63,8 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
     ClockModule,
     DatabaseModule,
     HealthModule,
+    AuditModule,
+    IdentityModule,
   ],
   providers: [
     // every request body/query/params is validated with Zod (DTOs from createZodDto)
