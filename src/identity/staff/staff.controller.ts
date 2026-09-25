@@ -29,7 +29,7 @@ export class StaffController {
       throw AppException.unauthorized();
     }
 
-    const isOwner = actor.permissions.has("roles:write");
+    const isOwner = actor.roles.includes("owner");
     const { staff, password } = await this.staffService.create(input, isOwner);
 
     return {
@@ -62,7 +62,7 @@ export class StaffController {
       throw AppException.unauthorized();
     }
 
-    const isOwner = actor.permissions.has("roles:write");
+    const isOwner = actor.roles.includes("owner");
     return (await this.staffService.update(id, input, actor.staffId, isOwner)) as StaffDto;
   }
 
@@ -73,6 +73,6 @@ export class StaffController {
       throw AppException.unauthorized();
     }
 
-    await this.staffService.deactivate(id, actor.staffId);
+    await this.staffService.deactivate(id, actor.staffId, actor.roles.includes("owner"));
   }
 }

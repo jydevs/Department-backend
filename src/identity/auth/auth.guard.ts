@@ -47,21 +47,17 @@ export class AuthGuard implements CanActivate {
       throw AppException.unauthorized("Invalid or expired token");
     }
 
-    // Load actor with staff info
-    try {
-      const user = await this.authService.getUserWithPermissions(payload.sub);
-      const actor: Actor = {
-        kind: "staff",
-        staffId: user.id,
-        roles: [user.role],
-        permissions: new Set(user.permissions),
-      };
+    // Load actor with staff info (a database failure must surface as 5xx, not sign the admin out)
+    const user = await this.authService.getUserWithPermissions(payload.sub);
+    const actor: Actor = {
+      kind: "staff",
+      staffId: user.id,
+      roles: [user.role],
+      permissions: new Set(user.permissions),
+    };
 
-      req.actor = actor;
-      RequestContextStore.setActor(actor);
-      return true;
-    } catch {
-      throw AppException.unauthorized("User not found or inactive");
-    }
+    req.actor = actor;
+    RequestContextStore.setActor(actor);
+    return true;
   }
 }

@@ -65,6 +65,7 @@ export class TOTPService {
    */
   decryptSecret(encryptedSecret: string): string {
     if (encryptedSecret.startsWith("plain:")) {
+      if (this.env.NODE_ENV === "production") throw new Error("Unencrypted 2FA secret refused in production");
       return encryptedSecret.slice(6);
     }
 

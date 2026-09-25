@@ -1,5 +1,4 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ClockModule } from "../../common/clock/clock";
 import { DatabaseModule } from "../../database/database.module";
@@ -29,14 +28,6 @@ import { TOTPService } from "./totp.service";
     AuthService,
     AuthGuard,
     PermissionsGuard,
-    {
-      provide: APP_GUARD,
-      useClass: AuthGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: PermissionsGuard,
-    },
   ],
   controllers: [AuthController],
   exports: [AuthService, AuthGuard, PermissionsGuard],

@@ -12,7 +12,6 @@ import { StaffUser } from "./staff-user.entity";
 @Entity("refresh_tokens")
 @Index(["staffUserId"])
 @Index(["familyId"])
-@Index(["tokenHash"])
 export class RefreshToken extends AppBaseEntity {
   @Column({ type: "uuid" })
   staffUserId!: string;

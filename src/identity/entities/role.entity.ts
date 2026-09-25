@@ -1,11 +1,8 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity } from "typeorm";
+import { AppBaseEntity } from "../../database/base.entity";
 
 @Entity("roles")
-@Index(["key"])
-export class Role {
-  @PrimaryGeneratedColumn("uuid")
-  id!: string;
-
+export class Role extends AppBaseEntity {
   @Column({ type: "varchar", length: 40, unique: true })
   key!: string;
 

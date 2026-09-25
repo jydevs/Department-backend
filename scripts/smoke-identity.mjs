@@ -1,4 +1,5 @@
-// Identity flow checks. Imported by smoke.mjs; needs OWNER_EMAIL / OWNER_PASSWORD (an existing owner).
+// Identity flow checks. NOTE: login is throttled to 5/min/IP and this flow uses 5 logins, so wait a minute (or restart the API) between runs.
+// Imported by smoke.mjs; needs OWNER_EMAIL / OWNER_PASSWORD (an existing owner).
 export async function identityChecks({ base, check, assert }) {
   const api = `${base}/api/v1`;
   const post = (path, body, token, headers = {}) =>
@@ -51,10 +52,26 @@ export async function identityChecks({ base, check, assert }) {
     assert(r2.status === 401, `reuse status ${r2.status}`);
   });
 
-  // the reuse above revoked the whole family: sign in again for the rest
-  const relog = await post("/auth/login", owner);
-  token = (await relog.json()).accessToken;
+  await check("reusing a rotated token revokes the whole family (the fresh token dies too)", async () => {
+    const l = await post("/auth/login", owner);
+    const c0 = (l.headers.get("set-cookie") ?? "").split(";")[0];
+    const r1 = await post("/auth/refresh", {}, null, { cookie: c0 });
+    const c1 = (r1.headers.get("set-cookie") ?? "").split(";")[0];
+    assert(r1.status < 300 && c1, "rotation failed");
+    await post("/auth/refresh", {}, null, { cookie: c0 }); // attacker replays the old one
+    const r2 = await post("/auth/refresh", {}, null, { cookie: c1 });
+    assert(r2.status === 401, `legit token still alive: ${r2.status}`);
+  });
 
+  await check("two simultaneous refreshes with one cookie: only one wins", async () => {
+    const l = await post("/auth/login", owner);
+    const c0 = (l.headers.get("set-cookie") ?? "").split(";")[0];
+    const [a, b] = await Promise.all([post("/auth/refresh", {}, null, { cookie: c0 }), post("/auth/refresh", {}, null, { cookie: c0 })]);
+    const ok = [a, b].filter((r) => r.status < 300).length;
+    assert(ok === 1, `${ok} refreshes succeeded`);
+  });
+
+  // the access token is stateless: it keeps working after its refresh family died
   await check("owner can list staff, roles and audit logs (200)", async () => {
     for (const p of ["/admin/staff", "/admin/roles", "/admin/audit-logs"]) {
       const r = await get(p, token);

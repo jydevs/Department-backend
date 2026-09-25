@@ -60,8 +60,8 @@ export class TokenService {
     if (!this.accessSecret) return null;
 
     try {
-      const verified = await jwtVerify<JWTPayload>(token, this.accessSecret);
-      return verified.payload as unknown as JWTPayload;
+      const { payload } = await jwtVerify(token, this.accessSecret, { algorithms: ["HS256"], requiredClaims: ["exp", "sub"] });
+      return typeof payload.sub === "string" ? { ...payload, sub: payload.sub, role: String(payload.role ?? "") } : null;
     } catch {
       return null;
     }

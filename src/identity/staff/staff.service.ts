@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
@@ -89,51 +90,36 @@ export class StaffService {
       const staffRepo = manager.getRepository(StaffUser);
       const roleRepo = manager.getRepository(Role);
 
+      // Serialize every change that can touch owners: lock the active owner rows before counting them,
+      // otherwise two owners demoting each other at the same time would both see "2 owners left".
+      const ownerRole = await roleRepo.findOne({ where: { key: "owner" } });
+      if (ownerRole) {
+        await manager.query("SELECT id FROM staff_users WHERE role_id = $1 AND is_active = true FOR UPDATE", [ownerRole.id]);
+      }
+
       const staff = await staffRepo.findOne({ where: { id } });
-      if (!staff) {
-        throw AppException.notFound("Staff member");
-      }
+      if (!staff) throw AppException.notFound("Staff member");
 
-      if (input.roleId) {
+      const isOwnerTarget = !!ownerRole && staff.roleId === ownerRole.id;
+      if (isOwnerTarget && !actorIsOwner) throw AppException.forbidden("Only owners can modify an owner");
+
+      if (input.roleId !== undefined && input.roleId !== staff.roleId) {
+        if (staff.id === actorId) throw AppException.forbidden("Cannot change your own role");
         const newRole = await roleRepo.findOne({ where: { id: input.roleId } });
-        if (!newRole) {
-          throw AppException.notFound("Role");
-        }
-
-        if (newRole.key === "owner" && !actorIsOwner) {
-          throw AppException.forbidden("Only owners can assign the owner role");
-        }
-
-        const currentRole = await roleRepo.findOne({ where: { id: staff.roleId } });
-        if (currentRole?.key === "owner" && newRole.key !== "owner") {
-          const ownerCount = await staffRepo.count({
-            where: { roleId: currentRole.id, isActive: true },
-          });
-
-          if (ownerCount === 1) {
-            throw AppException.forbidden("Cannot demote the last active owner");
-          }
-        }
+        if (!newRole) throw AppException.notFound("Role");
+        if (newRole.key === "owner" && !actorIsOwner) throw AppException.forbidden("Only owners can assign the owner role");
       }
 
-      if (input.isActive === false && staff.id === actorId) {
-        throw AppException.forbidden("Cannot deactivate yourself");
+      if (input.isActive === false && staff.id === actorId) throw AppException.forbidden("Cannot deactivate yourself");
+
+      const losesOwnerSeat = isOwnerTarget && staff.isActive && ((input.roleId !== undefined && input.roleId !== staff.roleId) || input.isActive === false);
+      if (losesOwnerSeat) {
+        const owners = await staffRepo.count({ where: { roleId: staff.roleId, isActive: true } });
+        if (owners <= 1) throw AppException.forbidden("Cannot demote or deactivate the last active owner");
       }
 
       if (input.isActive === false) {
-        const currentRole = await roleRepo.findOne({ where: { id: staff.roleId } });
-        if (currentRole?.key === "owner") {
-          const ownerCount = await staffRepo.count({
-            where: { roleId: currentRole.id, isActive: true },
-          });
-
-          if (ownerCount === 1) {
-            throw AppException.forbidden("Cannot deactivate the last active owner");
-          }
-        }
-
-        const refreshTokenRepo = manager.getRepository(RefreshToken);
-        await refreshTokenRepo.update({ staffUserId: staff.id }, { revokedAt: new Date() });
+        await manager.getRepository(RefreshToken).update({ staffUserId: staff.id }, { revokedAt: new Date() });
       }
 
       const diff: Record<string, unknown> = {};
@@ -141,46 +127,30 @@ export class StaffService {
         diff.fullName = { old: staff.fullName, new: input.fullName };
         staff.fullName = input.fullName;
       }
-
       if (input.roleId !== undefined && input.roleId !== staff.roleId) {
         diff.roleId = { old: staff.roleId, new: input.roleId };
         staff.roleId = input.roleId;
       }
-
       if (input.isActive !== undefined && input.isActive !== staff.isActive) {
         diff.isActive = { old: staff.isActive, new: input.isActive };
         staff.isActive = input.isActive;
       }
 
       const updated = await staffRepo.save(staff);
-
       if (Object.keys(diff).length > 0) {
-        await this.auditService.record(
-          {
-            action: "staff:update",
-            entityType: "StaffUser",
-            entityId: updated.id,
-            diff,
-          },
-          manager,
-        );
+        await this.auditService.record({ action: "staff:update", entityType: "StaffUser", entityId: updated.id, diff }, manager);
       }
-
       return this.mapToDto(updated);
     });
   }
 
-  async deactivate(id: string, actorId: string): Promise<void> {
-    await this.update(id, { isActive: false }, actorId, false);
+  async deactivate(id: string, actorId: string, actorIsOwner: boolean): Promise<void> {
+    await this.update(id, { isActive: false }, actorId, actorIsOwner);
   }
 
   async findById(id: string): Promise<StaffResponseDto | null> {
     const staff = await this.staffRepository.findOne({ where: { id } });
     return staff ? this.mapToDto(staff) : null;
-  }
-
-  async findByEmail(email: string): Promise<StaffUser | null> {
-    return this.staffRepository.findOne({ where: { email: email.toLowerCase() } });
   }
 
   async list(page: number, pageSize: number): Promise<{ items: StaffResponseDto[]; total: number }> {
@@ -211,11 +181,7 @@ export class StaffService {
   }
 
   private generateTemporaryPassword(): string {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-    let password = "";
-    for (let i = 0; i < 16; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*";
+    return Array.from({ length: 20 }, () => chars[randomInt(chars.length)]).join("");
   }
 }

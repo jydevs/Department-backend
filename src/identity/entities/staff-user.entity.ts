@@ -12,7 +12,7 @@ import { Role } from "./role.entity";
 import { RefreshToken } from "./refresh-token.entity";
 
 @Entity("staff_users")
-@Index(["email"])
+@Index(["email"], { unique: true })
 @Index(["roleId"])
 export class StaffUser extends VersionedEntity {
   @Column({ type: "varchar", length: 255 })

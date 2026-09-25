@@ -11,6 +11,8 @@ import { AppConfigModule, ENV } from "./config/config.module";
 import type { Env } from "./config/env";
 import { DatabaseModule } from "./database/database.module";
 import { AuditModule } from "./audit/audit.module";
+import { AuthGuard } from "./identity/auth/auth.guard";
+import { PermissionsGuard } from "./identity/auth/permissions.guard";
 import { IdentityModule } from "./identity/identity.module";
 import { HealthModule } from "./health/health.module";
 
@@ -70,7 +72,10 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
     // every request body/query/params is validated with Zod (DTOs from createZodDto)
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    // order matters: throttle first (cheap), then who you are, then what you may do
     { provide: APP_GUARD, useClass: StorefrontThrottlerGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })
 export class AppModule {}

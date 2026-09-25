@@ -149,10 +149,7 @@ export class AuthController {
 
     const result = await this.authService.setupTwoFA(actor.staffId);
 
-    return {
-      otpauthUrl: result.otpauthUrl,
-      secret: result.secret,
-    };
+    return { otpauthUrl: result.otpauthUrl };
   }
 
   /**
@@ -169,7 +166,7 @@ export class AuthController {
       throw AppException.unauthorized("Authentication required");
     }
 
-    const recoveryCodes = await this.authService.enableTwoFA(actor.staffId, dto.code, dto.secret);
+    const recoveryCodes = await this.authService.enableTwoFA(actor.staffId, dto.password, dto.code);
 
     return {
       recoveryCodes,
