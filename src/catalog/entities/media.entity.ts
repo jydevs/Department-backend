@@ -2,7 +2,7 @@ import { Column, Entity, Index } from "typeorm";
 import { AppBaseEntity } from "../../database/base.entity";
 
 @Entity("media")
-@Index(["sha256"])
+@Index("uq_media_sha256", ["sha256"], { unique: true, where: '"sha256" IS NOT NULL' })
 export class Media extends AppBaseEntity {
   @Column({ type: "text" })
   url!: string;

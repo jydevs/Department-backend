@@ -32,7 +32,6 @@ export interface RedirectResponseDto {
   toPath: string;
   statusCode: number;
   isActive: boolean;
-  hits: number;
   createdAt: Date;
   updatedAt: Date;
 }

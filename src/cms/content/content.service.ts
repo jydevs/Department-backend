@@ -81,7 +81,7 @@ export class ContentService {
     const rows: ListRow[] = await this.documents.query(
       `SELECT d.id, d.kind, d.key, d.title, d.version, d.draft_updated_at,
               pv.published_at,
-              (pv.id IS NULL OR d.draft IS DISTINCT FROM pv.data) AS has_unpublished_changes,
+              (pv.id IS NULL OR d.draft IS DISTINCT FROM pv.data OR (d.kind <> 'page' AND d.title IS DISTINCT FROM pv.title)) AS has_unpublished_changes,
               (SELECT MIN(s.publish_at) FROM content_versions s WHERE s.document_id = d.id AND s.status = 'scheduled') AS scheduled_at
          FROM content_documents d
          LEFT JOIN content_versions pv ON pv.id = d.published_version_id
@@ -141,10 +141,11 @@ export class ContentService {
     if (!parsed.ok) throw validationError(parsed.issues);
     const expected = input.version ?? ifMatch;
     const now = this.clock.now();
-    const title = kind === "page" ? String(parsed.data.title ?? "") : (input.title ?? null);
 
     await this.tx.run(async (manager) => {
       const existing = await manager.findOne(ContentDocument, { where: { kind, key } });
+      // Omitted title keeps the current one; explicit null clears it. Pages always mirror data.title.
+      const title = kind === "page" ? String(parsed.data.title ?? "") : input.title !== undefined ? input.title : (existing?.title ?? null);
       if (!existing) {
         if (kind === "page") throw AppException.notFound("Page (create it with POST /admin/content/pages)");
         const doc = manager.create(ContentDocument, { kind, key, title, draft: parsed.data, draftUpdatedAt: now, draftUpdatedBy: actorId, publishedVersionId: null });
@@ -241,7 +242,7 @@ export class ContentService {
       const doc = await manager.findOneByOrFail(ContentDocument, { id });
       const published = await this.publishedVersion(manager, doc);
       if (!published) throw AppException.conflict("NOT_PUBLISHED", "The document has no published version to go back to");
-      await this.setDraft(manager, id, published.data, now, actorId);
+      await this.setDraft(manager, id, published.data, now, actorId, kind === "page" ? undefined : published.title);
       await this.audit.record(
         { action: "content:discard", entityType: "ContentDocument", entityId: id, diff: { kind, key, changedKeys: changedKeys(doc.draft, published.data) } },
         manager,
@@ -257,7 +258,11 @@ export class ContentService {
       const doc = await manager.findOneByOrFail(ContentDocument, { id });
       const v = await manager.findOne(ContentVersion, { where: { id: versionId, documentId: id } });
       if (!v) throw AppException.notFound("Version");
-      await this.setDraft(manager, id, v.data, now, actorId);
+      const parsed = parseDocument(kind, key, v.data);
+      if (!parsed.ok) {
+        throw AppException.conflict("VERSION_INVALID", "Esa versión ya no cumple el esquema actual y no se puede restaurar", { issues: parsed.issues });
+      }
+      await this.setDraft(manager, id, parsed.data, now, actorId, kind === "page" ? undefined : v.title);
       await this.audit.record(
         {
           action: "content:restore",
@@ -281,13 +286,15 @@ export class ContentService {
       const parsed = parseDocument(kind, key, doc.draft);
       if (!parsed.ok) throw validationError(parsed.issues);
       const current = await this.publishedVersion(manager, doc);
-      if (current && sameDocument(current.data, parsed.data)) {
+      const versionTitle = kind === "page" ? null : (doc.title ?? null);
+      if (current && sameDocument(current.data, parsed.data) && (current.title ?? null) === versionTitle) {
         throw AppException.conflict("NOTHING_TO_PUBLISH", "The draft is identical to the published version");
       }
       const number = await this.nextNumber(manager, id);
       const version = manager.create(ContentVersion, {
         documentId: id,
         number,
+        title: versionTitle,
         data: parsed.data,
         status: "published",
         publishAt: null,
@@ -329,6 +336,7 @@ export class ContentService {
       const version = manager.create(ContentVersion, {
         documentId: id,
         number,
+        title: kind === "page" ? null : (doc.title ?? null),
         data: parsed.data, // snapshot of the draft AT THIS MOMENT
         status: "scheduled",
         publishAt,
@@ -453,10 +461,12 @@ export class ContentService {
     await manager.query(`UPDATE content_documents SET published_version_id = $2, updated_at = $3 WHERE id = $1`, [documentId, versionId, now]);
   }
 
-  private async setDraft(manager: EntityManager, id: string, data: Record<string, unknown>, now: Date, actorId: string | null): Promise<void> {
+  /** `title`: undefined keeps the current title (pages mirror data.title separately); null/string overwrites it. */
+  private async setDraft(manager: EntityManager, id: string, data: Record<string, unknown>, now: Date, actorId: string | null, title?: string | null): Promise<void> {
     await manager.query(
-      `UPDATE content_documents SET draft = $2::jsonb, draft_updated_at = $3, draft_updated_by = $4, updated_at = $3, version = version + 1 WHERE id = $1`,
-      [id, JSON.stringify(data), now, actorId],
+      `UPDATE content_documents SET draft = $2::jsonb, draft_updated_at = $3, draft_updated_by = $4, updated_at = $3, version = version + 1,
+              title = CASE WHEN $5::boolean THEN $6::varchar ELSE title END WHERE id = $1`,
+      [id, JSON.stringify(data), now, actorId, title !== undefined, title ?? null],
     );
   }
 
@@ -471,7 +481,7 @@ export class ContentService {
       version: doc.version,
       draft: doc.draft,
       draftUpdatedAt: doc.draftUpdatedAt,
-      hasUnpublishedChanges: !published || !sameDocument(published.data, doc.draft),
+      hasUnpublishedChanges: !published || !sameDocument(published.data, doc.draft) || (doc.kind !== "page" && (published.title ?? null) !== (doc.title ?? null)),
       published: published ? { versionId: published.id, number: published.number, publishedAt: published.publishedAt ?? null } : null,
       scheduled: scheduled.map((s) => ({ versionId: s.id, number: s.number, publishAt: s.publishAt ?? null })),
     };

@@ -15,6 +15,8 @@ import type { RedirectCreateDto, RedirectResponseDto, RedirectUpdateDto, Storefr
 const MAX_CHAIN = 10;
 const MAX_STOREFRONT_REDIRECTS = 5000;
 const REDIRECTS_TAG = "redirects";
+/** Serializes create/update so concurrent writers cannot each pass the loop check and jointly create a cycle. */
+const REDIRECTS_LOCK = 7_300_301;
 
 function invalid(path: string, message: string): AppException {
   return AppException.badRequest("VALIDATION_ERROR", message, [{ path, message }]);
@@ -32,6 +34,14 @@ export function normalizePath(input: string, field: string): string {
     const c = p.charCodeAt(i);
     if (c <= 0x20 || c === 0x7f) throw invalid(field, "No se permiten espacios ni caracteres de control");
   }
+  if (/%(?![0-9a-fA-F]{2})/.test(p)) throw invalid(field, "Codificación porcentual inválida");
+  // Decode only unreserved ASCII (%41 -> a); every other escape stays encoded, with lowercase hex.
+  p = p.replace(/%([0-9a-fA-F]{2})/g, (m, hex: string) => {
+    const code = parseInt(hex, 16);
+    if (code === 0) throw invalid(field, "Carácter nulo no permitido");
+    const ch = String.fromCharCode(code);
+    return /[A-Za-z0-9\-._~]/.test(ch) ? ch : `%${hex.toLowerCase()}`;
+  });
   p = p.toLowerCase().replace(/\/{2,}/g, "/");
   if (p.length > 1) p = p.replace(/\/+$/, "");
   return p.length === 0 ? "/" : p;
@@ -85,8 +95,9 @@ export class RedirectsService {
     const from = normalizePath(input.fromPath, "fromPath");
     const target = normalizeTarget(input.toPath);
     const dto = await this.tx.run(async (manager) => {
+      await manager.query(`SELECT pg_advisory_xact_lock($1)`, [REDIRECTS_LOCK]);
       await this.assertNoLoop(manager, from, target.internal, null);
-      const redirect = manager.create(Redirect, { fromPath: from, toPath: target.value, statusCode: input.statusCode, isActive: input.isActive, hits: 0 });
+      const redirect = manager.create(Redirect, { fromPath: from, toPath: target.value, statusCode: input.statusCode, isActive: input.isActive });
       try {
         await manager.insert(Redirect, redirect);
       } catch (err) {
@@ -105,6 +116,7 @@ export class RedirectsService {
 
   async update(id: string, input: RedirectUpdateDto): Promise<RedirectResponseDto> {
     const dto = await this.tx.run(async (manager) => {
+      await manager.query(`SELECT pg_advisory_xact_lock($1)`, [REDIRECTS_LOCK]);
       const r = await manager.findOne(Redirect, { where: { id }, lock: { mode: "pessimistic_write" } });
       if (!r) throw AppException.notFound("Redirect");
       const diff: Record<string, unknown> = {};
@@ -186,6 +198,7 @@ export class RedirectsService {
       if (!next || !next.startsWith("/")) return;
       current = normalizePath(next, "toPath");
     }
+    throw invalid("toPath", `La cadena de redirecciones supera ${MAX_CHAIN} saltos`);
   }
 
   private toDto(r: Redirect): RedirectResponseDto {
@@ -195,7 +208,6 @@ export class RedirectsService {
       toPath: r.toPath,
       statusCode: r.statusCode,
       isActive: r.isActive,
-      hits: r.hits,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };

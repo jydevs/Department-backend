@@ -83,6 +83,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (res.headersSent) return;
+    res.setHeader("Cache-Control", "no-store"); // an error must never be cached by a CDN/browser
     res.status(body.statusCode).json(body);
   }
 

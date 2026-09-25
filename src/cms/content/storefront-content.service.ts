@@ -37,8 +37,7 @@ export class StorefrontContentService {
       if (!(await this.preview.verify(previewToken, kind, key))) throw AppException.unauthorized("Invalid or expired preview token");
       const doc = await this.documents.findOne({ where: { kind, key } });
       if (!doc) throw AppException.notFound("Document");
-      return { body: { kind, key, title: doc.title ?? null, data: doc.draft, publishedAt: null }, etag: null, preview: true };
-    }
+      return { body: { kind, key, title: doc.title ?? null, data: doc.draft, publishedAt: null }, etag: null, preview: true };    }
     const rows = await this.publishedRows([{ kind, key }]);
     const row = rows[0];
     if (!row) throw AppException.notFound("Document");
@@ -47,7 +46,7 @@ export class StorefrontContentService {
 
   async listPages(): Promise<Served<StorefrontPageListItemDto[]>> {
     const rows: { key: string; title: string | null; version_id: string; number: number }[] = await this.documents.query(
-      `SELECT d.key, d.title, pv.id AS version_id, pv.number
+      `SELECT d.key, pv.data->>'title' AS title, pv.id AS version_id, pv.number
          FROM content_documents d JOIN content_versions pv ON pv.id = d.published_version_id
         WHERE d.kind = 'page' AND d.deleted_at IS NULL ORDER BY d.key`,
     );
@@ -88,7 +87,7 @@ export class StorefrontContentService {
       return `(d.kind = $${params.length - 1} AND d.key = $${params.length})`;
     });
     return this.documents.query(
-      `SELECT d.kind, d.key, d.title, pv.data, pv.published_at, pv.id AS version_id, pv.number
+      `SELECT d.kind, d.key, CASE WHEN d.kind = 'page' THEN pv.data->>'title' ELSE pv.title END AS title, pv.data, pv.published_at, pv.id AS version_id, pv.number
          FROM content_documents d JOIN content_versions pv ON pv.id = d.published_version_id
         WHERE d.deleted_at IS NULL AND (${conds.join(" OR ")})`,
       params,

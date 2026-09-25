@@ -1,9 +1,9 @@
 import type { z } from "zod";
 import type { ContentKind } from "../entities/content-document.entity";
 import { pageSchema } from "./page.schema";
-import { menuSchema } from "./menu.schema";
+import { menuRawDepthIssue, menuSchema } from "./menu.schema";
 import { settingsSchema } from "./settings.schema";
-import { templateSchema } from "./template.schema";
+import { TEMPLATE_KEYS, templateSchema } from "./template.schema";
 
 export * from "./common";
 export * from "./menu.schema";
@@ -29,6 +29,13 @@ const KIND_SCHEMAS: Record<ContentKind, z.ZodType> = {
 export function parseDocument(kind: ContentKind, key: string, data: unknown): ParseDocumentResult {
   const schema = KIND_SCHEMAS[kind] as z.ZodType | undefined;
   if (!schema) return { ok: false, issues: [{ path: "kind", message: `Tipo de documento desconocido: ${kind}` }] };
+  if (kind === "menu") {
+    const deep = menuRawDepthIssue(data);
+    if (deep) return { ok: false, issues: [deep] };
+  }
+  if (kind === "template" && !(TEMPLATE_KEYS as readonly string[]).includes(key)) {
+    return { ok: false, issues: [{ path: "key", message: `La clave de template debe ser una de: ${TEMPLATE_KEYS.join(", ")}` }] };
+  }
   if (kind === "settings" && key !== "site") {
     return { ok: false, issues: [{ path: "key", message: 'La clave de settings debe ser "site"' }] };
   }

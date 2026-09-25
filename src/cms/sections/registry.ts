@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { handleSlug, hexColor, nodeId, safeImageUrl, safeLinkUrl } from "../schemas/common";
+import { handleSlug, hexColor, markdownText, nodeId, safeImageUrl, safeLinkUrl } from "../schemas/common";
 
 /** Issue path is relative to the section (e.g. `settings.title`, `blocks.2.settings.text`). */
 export interface SectionIssue {
@@ -52,7 +52,7 @@ const alignment = z.enum(["left", "center", "right"]);
 const link = safeLinkUrl;
 const image = safeImageUrl;
 const alt = z.string().max(300);
-const markdown = z.string().max(5000); // Markdown only, never raw HTML (front renders it limited)
+const markdown = markdownText(5000); // Markdown only: no raw HTML, safe link destinations
 const maxItems = z.number().int().min(1).max(24);
 
 const s = <T extends z.ZodRawShape>(shape: T) => z.object(shape).strict();

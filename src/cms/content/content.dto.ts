@@ -1,11 +1,12 @@
 import { createZodDto } from "nestjs-zod";
 import { z } from "zod";
 import { handleSlug } from "../schemas/common";
+import { TEMPLATE_KEYS } from "../schemas/template.schema";
 import type { ContentKind } from "../entities/content-document.entity";
 import type { ContentVersionStatus } from "../entities/content-version.entity";
 
 export const CONTENT_KINDS = ["settings", "menu", "template", "page"] as const;
-export const TEMPLATE_KEYS = ["home", "collection", "product", "cart", "search", "404", "page"] as const;
+export { TEMPLATE_KEYS };
 
 export const contentKeySchema = z.string().regex(/^[a-z0-9][a-z0-9:_-]{0,119}$/);
 export const contentKindSchema = z.enum(CONTENT_KINDS);

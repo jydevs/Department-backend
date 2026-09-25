@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { Public } from "../../common/auth/decorators";
+import { AppException } from "../../common/errors/app-exception";
 import { BundleQueryDto, PreviewQueryDto, StorefrontBundleDto, StorefrontDocumentDto, StorefrontKeyParamsDto, StorefrontPageListItemDto } from "./content.dto";
 import { etagMatches } from "./content.util";
 import { Served, StorefrontContentService } from "./storefront-content.service";
@@ -70,7 +71,10 @@ export class ContentStorefrontController {
   }
 
   @Get("bundle")
-  async bundle(@Query() { template }: BundleQueryDto, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<StorefrontBundleDto | undefined> {
+  async bundle(@Query() { template, preview }: BundleQueryDto, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<StorefrontBundleDto | undefined> {
+    if (preview !== undefined) {
+      throw AppException.badRequest("PREVIEW_NOT_SUPPORTED", "El bundle no soporta preview: pida cada documento por separado con ?preview=");
+    }
     return send(req, res, await this.storefront.bundle(template));
   }
 }

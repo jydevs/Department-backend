@@ -17,7 +17,8 @@ export class RevalidationService {
     const secret = this.env.STOREFRONT_REVALIDATE_SECRET;
     if (!secret || tags.length === 0) return;
     try {
-      const body = JSON.stringify({ tags });
+      // `ts` lives inside the signed body so the receiver can reject replays of old requests.
+      const body = JSON.stringify({ tags, ts: Date.now() });
       const signature = createHmac("sha256", secret).update(body).digest("hex");
       const url = new URL("/api/revalidate", this.env.STOREFRONT_URL).toString();
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -35,6 +36,7 @@ export class RevalidationService {
     try {
       const res = await fetch(url, {
         method: "POST",
+        redirect: "manual",
         headers: { "content-type": "application/json", "x-signature": signature },
         body,
         signal: controller.signal,
