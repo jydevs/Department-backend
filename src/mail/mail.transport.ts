@@ -22,9 +22,12 @@ export const MAIL_TRANSPORT = Symbol("MAIL_TRANSPORT");
 export class LogTransport implements MailTransport {
   private readonly logger = new Logger("MailLog");
 
+  constructor(@Inject(ENV) private readonly env: Env) {}
+
   send(mail: OutgoingMail): Promise<void> {
     this.logger.log(`[mail:log] to=${mail.to} subject="${mail.subject}"`);
-    this.logger.debug(mail.text);
+    // never the body in production; elsewhere links lose their token so the log cannot be used to take over an account
+    if (this.env.NODE_ENV !== "production") this.logger.debug(mail.text.replace(/token=[^\s&"<>]*/g, "token=[redacted]"));
     return Promise.resolve();
   }
 }

@@ -12,6 +12,8 @@ import type {
 } from "./dto/customers.dto";
 
 export const MAX_ADDRESSES = 10;
+export const MAX_FAILED_LOGINS = 5;
+export const LOCK_MS = 15 * 60 * 1000;
 
 interface QueryRunnerLike {
   query(sql: string, params?: unknown[]): Promise<unknown>;
@@ -25,11 +27,23 @@ export async function queryRows<T>(runner: QueryRunnerLike, sql: string, params:
 }
 
 /**
+ * Count a failed password attempt in ONE atomic statement (parallel guesses cannot undercount) and lock after 5.
+ * An expired lock restarts the count at 1. Shared by login, change-password and account deletion.
+ */
+export async function recordFailedPassword(runner: QueryRunnerLike, customerId: string, now: Date): Promise<void> {
+  const next = "CASE WHEN locked_until IS NOT NULL AND locked_until <= $2 THEN 1 ELSE failed_login_count + 1 END";
+  await runner.query(
+    `UPDATE customers SET failed_login_count = ${next}, locked_until = CASE WHEN (${next}) >= ${MAX_FAILED_LOGINS} THEN $3::timestamptz ELSE NULL END WHERE id = $1`,
+    [customerId, now, new Date(now.getTime() + LOCK_MS)],
+  );
+}
+
+/**
  * Attach earlier guest orders to the account. ONLY call this when the email is verified:
  * linking by an unverified address would hand someone else's order history to whoever registered it.
  */
 export async function linkGuestOrders(manager: EntityManager, customerId: string, email: string): Promise<void> {
-  await manager.query("UPDATE orders SET customer_id = $1 WHERE lower(email) = $2 AND customer_id IS NULL", [customerId, email.toLowerCase()]);
+  await manager.query("UPDATE orders SET customer_id = $1 WHERE email = $2 AND customer_id IS NULL", [customerId, email.toLowerCase()]);
 }
 
 export const anonymizedEmail = (customerId: string): string => `deleted+${customerId}@invalid`;

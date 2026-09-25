@@ -14,7 +14,8 @@ const subscribeSchema = z.strictObject({
 });
 export class SubscribeNewsletterDto extends createZodDto(subscribeSchema) {}
 
-const tokenQuerySchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) });
+/** confirm tokens are 43 base64url characters; unsubscribe tokens are `<subscriber uuid>.<43 char hmac>`. */
+const tokenQuerySchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_.-]{43,90}$/) });
 export class NewsletterTokenQueryDto extends createZodDto(tokenQuerySchema) {}
 
 /** Plain text only: no HTML tags, no control characters (newlines and tabs allowed where `multiline`). */

@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { RequirePermissions } from "../common/auth/decorators";
 import { IdParamDto } from "../common/params/params";
 import type { OffsetPage } from "../common/pagination/pagination";
-import { csvRow } from "./csv";
+import { csvRow } from "../common/csv";
 import { ContactService } from "./contact.service";
 import {
   ContactMessageListQueryDto,
@@ -52,7 +52,7 @@ export class MarketingAdminController {
 
   /** CSV of subscribed addresses only, streamed in keyset batches (max 50 000 rows). */
   @Get("newsletter/export")
-  @RequirePermissions("marketing:read")
+  @RequirePermissions("marketing:write")
   @Header("Content-Type", "text/csv; charset=utf-8")
   @Header("Content-Disposition", 'attachment; filename="newsletter-subscribers.csv"')
   @Header("Cache-Control", "no-store")

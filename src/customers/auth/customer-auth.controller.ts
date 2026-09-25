@@ -36,8 +36,8 @@ export class CustomerAuthController {
   @HttpCode(202)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: "Register an account (always 202: does not reveal whether the email exists)" })
-  async register(@Body() dto: RegisterDto): Promise<MessageResponse> {
-    await this.auth.register(dto);
+  register(@Body() dto: RegisterDto): MessageResponse {
+    this.auth.register(dto);
     return { message: "If the address can be registered, we sent you an email to verify it." };
   }
 
@@ -88,8 +88,8 @@ export class CustomerAuthController {
   @HttpCode(202)
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @ApiOperation({ summary: "Request a password reset link (always 202)" })
-  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<MessageResponse> {
-    await this.auth.forgotPassword(dto.email);
+  forgotPassword(@Body() dto: ForgotPasswordDto): MessageResponse {
+    this.auth.forgotPassword(dto.email);
     return { message: "If the account exists, we sent you an email with instructions." };
   }
 
@@ -108,9 +108,9 @@ export class CustomerAuthController {
   @Public()
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @ApiOperation({ summary: "Verify the email address with the emailed token" })
+  @ApiOperation({ summary: "Verify the email address with the emailed token; sets the given password and signs out every session" })
   async verifyEmail(@Body() dto: VerifyEmailDto): Promise<MessageResponse> {
-    await this.auth.verifyEmail(dto.token);
+    await this.auth.verifyEmail(dto.token, dto.password);
     return { message: "Email verified" };
   }
 

@@ -21,7 +21,7 @@ const DEFAULT_RANGE_DAYS = 30;
 const MAX_RANGE_DAYS = 366;
 
 /** Orders that count as sales: paid and not cancelled/expired. */
-const PAID_FILTER = `o.status IN ('open', 'completed') AND o.paid_at IS NOT NULL`;
+const PAID_FILTER = `o.status IN ('open', 'completed') AND o.paid_at IS NOT NULL AND o.currency = 'COP'`;
 
 interface Range {
   from: Date;
@@ -97,7 +97,7 @@ const BUCKETS_CTE = `
   buckets AS (
     SELECT generate_series(
       date_trunc($3::text, $1::timestamptz AT TIME ZONE '${TIMEZONE}'),
-      date_trunc($3::text, $2::timestamptz AT TIME ZONE '${TIMEZONE}'),
+      date_trunc($3::text, ($2::timestamptz - interval '1 millisecond') AT TIME ZONE '${TIMEZONE}'),
       ('1 ' || $3::text)::interval
     ) AS bucket
   )`;
@@ -112,8 +112,8 @@ export class AnalyticsService {
   async overview(query: AnalyticsRangeQuery): Promise<AnalyticsOverviewDto> {
     const range = this.resolveRange(query);
     const span = range.to.getTime() - range.from.getTime();
-    // Same duration, immediately before `from` (half-open: the previous period excludes `from`).
-    const previousRange: Range = { from: new Date(range.from.getTime() - span), to: new Date(range.from.getTime() - 1) };
+    // Same duration, immediately before `from` (half-open [from, to): the previous period ends exactly where this one starts).
+    const previousRange: Range = { from: new Date(range.from.getTime() - span), to: range.from };
 
     const [current, previous] = await Promise.all([this.metrics(range), this.metrics(previousRange)]);
     const change: OverviewChangeDto = {
@@ -136,7 +136,7 @@ export class AnalyticsService {
                 COALESCE(SUM(o.total), 0) AS gross,
                 COALESCE(SUM(o.total_refunded), 0) AS refunded
            FROM orders o
-          WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at <= $2
+          WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at < $2
           GROUP BY 1
        )
        SELECT to_char(b.bucket, 'YYYY-MM-DD') AS bucket,
@@ -171,7 +171,7 @@ export class AnalyticsService {
               COUNT(DISTINCT o.id) AS orders
          FROM order_lines l
          JOIN orders o ON o.id = l.order_id
-        WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at <= $2
+        WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at < $2
         GROUP BY l.product_id
         ORDER BY ${order}, l.product_id
         LIMIT $3`,
@@ -196,17 +196,17 @@ export class AnalyticsService {
       this.dataSource.query<CustomerSummaryRow[]>(
         `SELECT
            (SELECT COUNT(*) FROM customers c
-             WHERE c.created_at >= $1 AND c.created_at <= $2 AND c.anonymized_at IS NULL AND c.deleted_at IS NULL) AS new_customers,
+             WHERE c.created_at >= $1 AND c.created_at < $2 AND c.anonymized_at IS NULL AND c.deleted_at IS NULL) AS new_customers,
            (SELECT COUNT(*) FROM customers c WHERE c.anonymized_at IS NULL AND c.deleted_at IS NULL) AS total_customers,
            (SELECT COUNT(*) FROM customers c
-             WHERE c.accepts_marketing AND c.anonymized_at IS NULL AND c.deleted_at IS NULL) AS marketing_subscribers,
+             WHERE c.accepts_marketing AND c.email_verified_at IS NOT NULL AND c.anonymized_at IS NULL AND c.deleted_at IS NULL) AS marketing_subscribers,
            COUNT(*) FILTER (WHERE t.customer_id IS NOT NULL) AS buyers,
            COUNT(*) FILTER (WHERE t.customer_id IS NOT NULL AND t.n >= 2) AS repeat_buyers,
            COALESCE(SUM(t.n) FILTER (WHERE t.customer_id IS NULL), 0) AS guest_orders
          FROM (
            SELECT o.customer_id, COUNT(*) AS n
              FROM orders o
-            WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at <= $2
+            WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at < $2
             GROUP BY o.customer_id
          ) t`,
         [range.from, range.to],
@@ -216,7 +216,7 @@ export class AnalyticsService {
          agg AS (
            SELECT date_trunc($3::text, c.created_at AT TIME ZONE '${TIMEZONE}') AS bucket, COUNT(*) AS n
              FROM customers c
-            WHERE c.created_at >= $1 AND c.created_at <= $2 AND c.anonymized_at IS NULL AND c.deleted_at IS NULL
+            WHERE c.created_at >= $1 AND c.created_at < $2 AND c.anonymized_at IS NULL AND c.deleted_at IS NULL
             GROUP BY 1
          )
          SELECT to_char(b.bucket, 'YYYY-MM-DD') AS bucket, COALESCE(a.n, 0) AS new_customers
@@ -247,19 +247,19 @@ export class AnalyticsService {
     const rows = await this.dataSource.query<OverviewRow[]>(
       `SELECT
          (SELECT COALESCE(SUM(o.total), 0) FROM orders o
-           WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at <= $2) AS gross,
+           WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at < $2) AS gross,
          (SELECT COALESCE(SUM(o.total_refunded), 0) FROM orders o
-           WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at <= $2) AS refunded,
+           WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at < $2) AS refunded,
          (SELECT COUNT(*) FROM orders o
-           WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at <= $2) AS paid_orders,
+           WHERE ${PAID_FILTER} AND o.paid_at >= $1 AND o.paid_at < $2) AS paid_orders,
          (SELECT COUNT(*) FROM customers c
-           WHERE c.created_at >= $1 AND c.created_at <= $2 AND c.anonymized_at IS NULL AND c.deleted_at IS NULL) AS new_customers,
+           WHERE c.created_at >= $1 AND c.created_at < $2 AND c.anonymized_at IS NULL AND c.deleted_at IS NULL) AS new_customers,
          COUNT(*) AS created_orders,
          COUNT(*) FILTER (WHERE x.status IN ('open', 'completed') AND x.paid_at IS NOT NULL) AS created_paid,
          COUNT(*) FILTER (WHERE x.status = 'expired') AS created_expired,
          COUNT(*) FILTER (WHERE x.status = 'cancelled') AS created_cancelled
        FROM orders x
-       WHERE x.created_at >= $1 AND x.created_at <= $2`,
+       WHERE x.currency = 'COP' AND x.created_at >= $1 AND x.created_at < $2`,
       [range.from, range.to],
     );
     const r = rows[0];
@@ -288,7 +288,7 @@ export class AnalyticsService {
     };
   }
 
-  /** Defaults to the last 30 days; rejects inverted or > 366-day ranges with a 400. */
+  /** `to` is exclusive. Defaults to the last 30 days; rejects inverted or > 366-day ranges with a 400. */
   private resolveRange(query: { from?: Date; to?: Date }): Range {
     const to = query.to ?? this.clock.now();
     const from = query.from ?? new Date(to.getTime() - DEFAULT_RANGE_DAYS * DAY_MS);

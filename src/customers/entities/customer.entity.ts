@@ -7,6 +7,7 @@ import type { CustomerToken } from "./customer-token.entity";
 @Entity("customers")
 @Index(["email"], { unique: true })
 @Index(["acceptsMarketing"])
+@Index(["createdAt"])
 export class Customer extends VersionedEntity {
   /** Stored lowercase (enforced by the service). */
   @Column({ type: "varchar", length: 255 })

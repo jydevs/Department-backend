@@ -6,15 +6,18 @@ import type { Env } from "../config/env";
 import { MAIL_TRANSPORT, type MailTransport } from "./mail.transport";
 
 const INTERVAL_MS = 15_000;
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 5;
 const MAX_ATTEMPTS = 5;
 const BASE_BACKOFF_MS = 60_000;
 /** A claimed row is invisible to other workers for this long; if this process dies mid-send it is retried afterwards. */
-const LEASE_MS = 5 * 60_000;
+const LEASE_MS = 2 * 60_000;
+/** Bodies of these mails carry one-time links: once delivered they are wiped from the outbox (subject and metadata stay). */
+export const SENSITIVE_TEMPLATES: readonly string[] = ["password_reset", "email_verify", "newsletter_confirm", "account_exists"];
 
 interface ClaimedRow {
   id: string;
   to: string;
+  template: string;
   subject: string;
   body_html: string;
   body_text: string;
@@ -74,7 +77,7 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
            LIMIT ${BATCH_SIZE}
            FOR UPDATE SKIP LOCKED
          )
-         RETURNING id, "to", subject, body_html, body_text, attempts
+         RETURNING id, "to", template, subject, body_html, body_text, attempts
        ) SELECT * FROM claimed`,
       [leaseUntil, now],
     );
@@ -86,8 +89,11 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
       await this.transport.send({ to: row.to, subject: row.subject, html: row.body_html, text: row.body_text });
       const now = this.clock.now();
       await this.dataSource.query(
-        `UPDATE email_outbox SET status = 'sent', sent_at = $2, attempts = attempts + 1, last_error = NULL, updated_at = $2 WHERE id = $1`,
-        [row.id, now],
+        `UPDATE email_outbox
+            SET status = 'sent', sent_at = $2, attempts = attempts + 1, last_error = NULL, updated_at = $2,
+                body_html = CASE WHEN $3 THEN '' ELSE body_html END, body_text = CASE WHEN $3 THEN '' ELSE body_text END
+          WHERE id = $1`,
+        [row.id, now, SENSITIVE_TEMPLATES.includes(row.template)],
       );
     } catch (err) {
       await this.fail(row, err);

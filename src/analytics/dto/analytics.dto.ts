@@ -1,6 +1,23 @@
 import { createZodDto } from "nestjs-zod";
 import { z } from "zod";
-import { dateInput } from "../../common/zod/date-input";
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 86_400_000;
+
+/**
+ * Range bound. A bare `YYYY-MM-DD` is a calendar day in America/Bogota (UTC-5, no DST): a `from` becomes that day at
+ * 00:00 Bogota, a `to` becomes the NEXT day at 00:00 Bogota (the service treats `to` as exclusive). Anything with an
+ * explicit time is taken as given. (`z.coerce.date()` cannot be represented in JSON Schema, hence string + transform.)
+ */
+const rangeBound = (edge: "from" | "to") =>
+  z
+    .string()
+    .max(40)
+    .refine((v) => !Number.isNaN(DATE_ONLY.test(v) ? Date.parse(`${v}T00:00:00-05:00`) : Date.parse(v)), "Invalid date")
+    .transform((v) => {
+      if (!DATE_ONLY.test(v)) return new Date(v);
+      const start = Date.parse(`${v}T00:00:00-05:00`);
+      return new Date(edge === "to" ? start + DAY_MS : start);
+    });
 
 /* ── requests ─────────────────────────────────────────────── */
 
@@ -10,10 +27,10 @@ export const GROUP_BY_VALUES = ["day", "week", "month"] as const;
 export type GroupBy = (typeof GROUP_BY_VALUES)[number];
 
 const rangeShape = {
-  /** Inclusive lower bound. Default: `to` minus 30 days. */
-  from: optionalQuery(dateInput),
-  /** Inclusive upper bound. Default: now. */
-  to: optionalQuery(dateInput),
+  /** Inclusive lower bound (a bare date = 00:00 Bogota). Default: `to` minus 30 days. */
+  from: optionalQuery(rangeBound("from")),
+  /** Exclusive upper bound (a bare date includes that whole Bogota day). Default: now. */
+  to: optionalQuery(rangeBound("to")),
 };
 
 export const analyticsRangeQuerySchema = z.object(rangeShape);

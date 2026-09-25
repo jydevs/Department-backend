@@ -10,6 +10,7 @@ import { CustomerAuthController } from "./auth/customer-auth.controller";
 import { CustomerAuthGuard } from "./auth/customer-auth.guard";
 import { CustomerAuthService } from "./auth/customer-auth.service";
 import { CustomerTokenService } from "./auth/customer-token.service";
+import { CustomersCleanupScheduler } from "./customers-cleanup.scheduler";
 import { CustomerErasureService } from "./customer-erasure.service";
 import { CustomersAccountController } from "./customers-account.controller";
 import { CustomersAccountService } from "./customers-account.service";
@@ -31,9 +32,10 @@ import { Customer, CustomerAddress, CustomerRefreshToken, CustomerToken } from "
     CustomerAuthGuard,
     CustomerAuthService,
     CustomerErasureService,
+    CustomersCleanupScheduler,
     CustomersAccountService,
     CustomersAdminService,
   ],
-  exports: [CustomerAuthGuard, CustomerTokenService],
+  exports: [CustomerAuthGuard, CustomerTokenService, CustomerErasureService],
 })
 export class CustomersModule {}

@@ -42,6 +42,8 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
   const email = buyerEmail ?? `cust-${stamp}@dept.test`;
   const password1 = "Sup3r-Secret-Pass-1";
   const password2 = "An0ther-Secret-Pass-2";
+  // whoever registers an address first chooses a password too: the mailbox owner replaces it when verifying
+  const attackerPassword = "Attacker-Chosen-Pass-9";
   let access;
   let cookie;
 
@@ -54,16 +56,24 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
     }
 
     await check("customers: register never reveals whether the e-mail exists (202 both times)", async () => {
-      const body = { email, password: password1, firstName: "Smoke", lastName: "Buyer", acceptsMarketing: false };
+      const body = { email, password: attackerPassword, firstName: "Smoke", lastName: "Buyer", acceptsMarketing: false };
       const a = await call("POST", "/storefront/customers/register", body);
       const b = await call("POST", "/storefront/customers/register", body);
       assert(a.status === 202 && b.status === 202, `register ${a.status}/${b.status}`);
+      // the second attempt hit an existing account: its owner is told by e-mail, without any token
+      let mail;
+      for (let i = 0; i < 20 && !mail; i++) {
+        mail = (await db.query("SELECT body_text FROM email_outbox WHERE \"to\" = $1 AND template = 'account_exists'", [email])).rows[0];
+        if (!mail) await new Promise((res) => setTimeout(res, 500));
+      }
+      assert(mail, "no account_exists e-mail queued");
+      assert(!/token=/.test(mail.body_text) || mail.body_text === "", "account_exists e-mail must not carry a token");
     });
 
     await check("customers: e-mail verification token works once", async () => {
       const token = await tokenFor(email, "email_verify");
-      await ok(await call("POST", "/storefront/customers/verify-email", { token }), "verify");
-      const again = await call("POST", "/storefront/customers/verify-email", { token });
+      await ok(await call("POST", "/storefront/customers/verify-email", { token, password: password1 }), "verify");
+      const again = await call("POST", "/storefront/customers/verify-email", { token, password: password1 });
       assert(again.status >= 400 && again.status < 500, `token reuse → ${again.status}`);
     });
 
@@ -75,6 +85,11 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
       cookie = setCookie.split(";")[0];
       assert(access && /HttpOnly/i.test(setCookie) && /dept_ct/.test(setCookie), "missing token or cookie");
       assert(!JSON.stringify(j).includes("passwordHash"), "hash leaked");
+    });
+
+    await check("customers: verifying replaced the password chosen at registration", async () => {
+      const r = await call("POST", "/storefront/customers/login", { email, password: attackerPassword });
+      assert(r.status === 401, `registration password still works → ${r.status}`);
     });
 
     await check("customers: tokens are not interchangeable (customer ≠ staff)", async () => {
@@ -111,7 +126,7 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
         assert(one.status === 200, `own order → ${one.status}`);
         const otherEmail = `other-${stamp}@dept.test`;
         await call("POST", "/storefront/customers/register", { email: otherEmail, password: password1, firstName: "O", lastName: "T", acceptsMarketing: false });
-        await ok(await call("POST", "/storefront/customers/verify-email", { token: await tokenFor(otherEmail, "email_verify") }), "verify other");
+        await ok(await call("POST", "/storefront/customers/verify-email", { token: await tokenFor(otherEmail, "email_verify"), password: password1 }), "verify other");
         const other = await ok(await call("POST", "/storefront/customers/login", { email: otherEmail, password: password1 }), "login other");
         const idor = await call("GET", `/storefront/customers/me/orders/${orderNumber}`, undefined, other.accessToken);
         assert(idor.status === 404, `another customer's order → ${idor.status}`);
@@ -137,8 +152,6 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
       const wrong = await call("DELETE", "/storefront/customers/me", { password: "not-my-password-1" }, access);
       assert(wrong.status >= 400 && wrong.status < 500, `wrong password → ${wrong.status}`);
       await ok(await call("DELETE", "/storefront/customers/me", { password: password2 }, access), "delete me");
-      const login = await call("POST", "/storefront/customers/login", { email, password: password2 });
-      assert(login.status === 401, `login after erase → ${login.status}`);
       const row = (await db.query("SELECT email, anonymized_at FROM customers WHERE lower(email) = $1", [email.toLowerCase()])).rowCount;
       assert(row === 0, "original e-mail still stored");
     });

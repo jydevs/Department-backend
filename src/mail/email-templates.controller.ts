@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { RequirePermissions } from "../common/auth/decorators";
+import type { Actor } from "../common/auth/actor";
+import { CurrentActor, RequirePermissions } from "../common/auth/decorators";
 import {
   PreviewEmailTemplateDto,
   TemplateKeyParamDto,
@@ -29,8 +30,8 @@ export class EmailTemplatesController {
 
   @Put(":key")
   @RequirePermissions("marketing:write")
-  update(@Param() { key }: TemplateKeyParamDto, @Body() body: UpdateEmailTemplateDto): Promise<EmailTemplateResponse> {
-    return this.templates.update(key, body);
+  update(@CurrentActor() actor: Actor, @Param() { key }: TemplateKeyParamDto, @Body() body: UpdateEmailTemplateDto): Promise<EmailTemplateResponse> {
+    return this.templates.update(actor, key, body);
   }
 
   @Post(":key/preview")
@@ -44,7 +45,7 @@ export class EmailTemplatesController {
   @HttpCode(202)
   @RequirePermissions("marketing:write")
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  async testSend(@Param() { key }: TemplateKeyParamDto, @Body() body: TestSendEmailTemplateDto): Promise<void> {
-    await this.templates.testSend(key, body.to);
+  async testSend(@CurrentActor() actor: Actor, @Param() { key }: TemplateKeyParamDto, @Body() body: TestSendEmailTemplateDto): Promise<void> {
+    await this.templates.testSend(actor, key, body.to);
   }
 }

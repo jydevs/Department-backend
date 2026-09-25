@@ -1,5 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
-import { Inject, Injectable } from "@nestjs/common";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Brackets, Repository } from "typeorm";
 import { AuditService } from "../audit/audit.service";
@@ -20,6 +20,8 @@ const CONFIRM_TTL_MS = 7 * 24 * 3600_000;
 /** Do not re-send a confirmation mail more often than this for the same pending address (anti mail-bombing). */
 const RESEND_COOLDOWN_MS = 2 * 60_000;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const newToken = (): { raw: string; hash: string } => {
   const raw = randomBytes(32).toString("base64url");
   return { raw, hash: sha256(raw) };
@@ -28,6 +30,10 @@ const sha256 = (value: string): string => createHash("sha256").update(value).dig
 
 @Injectable()
 export class NewsletterService {
+  private readonly logger = new Logger(NewsletterService.name);
+  /** HMAC('newsletter-unsubscribe', CUSTOMER_JWT_SECRET); a random per-process secret in dev when none is configured. */
+  private readonly unsubscribeKey: Buffer;
+
   constructor(
     @InjectRepository(NewsletterSubscriber) private readonly subscribers: Repository<NewsletterSubscriber>,
     private readonly tx: TransactionService,
@@ -35,11 +41,48 @@ export class NewsletterService {
     private readonly audit: AuditService,
     private readonly clock: Clock,
     @Inject(ENV) private readonly env: Env,
-  ) {}
+  ) {
+    const secret = this.env.CUSTOMER_JWT_SECRET ? Buffer.from(this.env.CUSTOMER_JWT_SECRET, "utf8") : randomBytes(32);
+    this.unsubscribeKey = createHmac("sha256", secret).update("newsletter-unsubscribe").digest();
+  }
 
-  /** Always resolves the same way: the caller cannot tell whether the address was already known. */
-  async subscribe(email: string, source: string): Promise<void> {
+  /**
+   * Stateless one-click unsubscribe token: `<subscriber id>.<HMAC-SHA256(id)>`. Nothing is stored (the legacy
+   * unsubscribe_token_hash column stays in the schema but is no longer used), it never expires and it is reusable.
+   */
+  unsubscribeToken(subscriberId: string): string {
+    return `${subscriberId}.${createHmac("sha256", this.unsubscribeKey).update(subscriberId).digest("base64url")}`;
+  }
+
+  unsubscribeUrl(subscriberId: string): string {
+    return this.link("baja", this.unsubscribeToken(subscriberId));
+  }
+
+  /** Returns the subscriber id when the token is authentic, otherwise null. */
+  private verifyUnsubscribeToken(token: string): string | null {
+    const dot = token.indexOf(".");
+    if (dot !== 36) return null;
+    const id = token.slice(0, dot);
+    if (!UUID.test(id)) return null;
+    const expected = Buffer.from(this.unsubscribeToken(id));
+    const given = Buffer.from(token);
+    return given.length === expected.length && timingSafeEqual(given, expected) ? id : null;
+  }
+
+  /**
+   * Answers immediately; the insert and the mail happen right after the response, so timing does not tell whether
+   * the address was already known. Failures are logged, never surfaced.
+   */
+  subscribe(email: string, source: string): void {
     const ip = truncateIp(RequestContextStore.get()?.ip);
+    setImmediate(() => {
+      this.performSubscribe(email, source, ip).catch((err: unknown) =>
+        this.logger.error(`subscribe failed: ${err instanceof Error ? err.message : String(err)}`),
+      );
+    });
+  }
+
+  private async performSubscribe(email: string, source: string, ip: string | null): Promise<void> {
     const now = this.clock.now();
     await this.tx.run(async (manager) => {
       await manager
@@ -52,15 +95,13 @@ export class NewsletterService {
       const row = await manager.findOne(NewsletterSubscriber, { where: { email }, lock: { mode: "pessimistic_write" } });
       if (!row || row.status === "subscribed") return;
 
-      // A row that already got its tokens (unsubscribeTokenHash set) and is pending was mailed recently: do not re-send yet.
-      const alreadyMailed = row.unsubscribeTokenHash !== null && row.unsubscribeTokenHash !== undefined;
+      // A pending row that already got its confirmation token was mailed recently: do not re-send yet.
+      const alreadyMailed = row.confirmTokenHash !== null && row.confirmTokenHash !== undefined;
       if (row.status === "pending" && alreadyMailed && now.getTime() - row.updatedAt.getTime() < RESEND_COOLDOWN_MS) return;
 
       const confirm = newToken();
-      const unsubscribe = newToken();
       row.status = "pending";
       row.confirmTokenHash = confirm.hash;
-      row.unsubscribeTokenHash = unsubscribe.hash;
       row.source = row.source || source;
       row.ip = ip;
       await manager.save(row);
@@ -68,10 +109,7 @@ export class NewsletterService {
         {
           to: email,
           template: "newsletter_confirm",
-          data: {
-            confirmUrl: this.link("confirmar", confirm.raw),
-            unsubscribeUrl: this.link("baja", unsubscribe.raw),
-          },
+          data: { confirmUrl: this.link("confirmar", confirm.raw), unsubscribeUrl: this.unsubscribeUrl(row.id) },
         },
         manager,
       );
@@ -97,12 +135,11 @@ export class NewsletterService {
   }
 
   async unsubscribeByToken(token: string): Promise<NewsletterTokenResponse> {
+    const id = this.verifyUnsubscribeToken(token);
+    if (!id) throw AppException.badRequest("INVALID_TOKEN", "The link is invalid");
     return this.tx.run(async (manager) => {
-      const row = await manager.findOne(NewsletterSubscriber, {
-        where: { unsubscribeTokenHash: sha256(token) },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!row) throw AppException.badRequest("INVALID_TOKEN", "The link is invalid or has expired");
+      const row = await manager.findOne(NewsletterSubscriber, { where: { id }, lock: { mode: "pessimistic_write" } });
+      if (!row) throw AppException.badRequest("INVALID_TOKEN", "The link is invalid");
       if (row.status !== "unsubscribed") {
         row.status = "unsubscribed";
         row.confirmTokenHash = null;

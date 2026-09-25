@@ -25,6 +25,9 @@ export class Customers1790340045167 implements MigrationInterface {
         await queryRunner.query(`CREATE INDEX "IDX_185083992227953420d078ee20" ON "newsletter_subscribers"  ("confirm_token_hash") `);
         await queryRunner.query(`CREATE INDEX "IDX_31db80a01fe1bf199796eb2073" ON "newsletter_subscribers"  ("status") `);
         await queryRunner.query(`CREATE UNIQUE INDEX "IDX_0dc48416511f011f7de7b2a8f8" ON "newsletter_subscribers"  ("email") `);
+        await queryRunner.query(`CREATE INDEX "IDX_a8fcf679692db1c886e7f15d2b" ON "customers"  ("created_at") `);
+        await queryRunner.query(`CREATE INDEX "IDX_772d0ce0473ac2ccfa26060dbe" ON "orders"  ("customer_id") `);
+        await queryRunner.query(`CREATE INDEX "IDX_952f070ca31b95def7ecfcdb89" ON "orders"  ("paid_at") `);
         await queryRunner.query(`ALTER TABLE "tax_settings" ALTER COLUMN "rate_percent" SET DEFAULT '19.00'`);
         await queryRunner.query(`ALTER TABLE "customer_addresses" ADD CONSTRAINT "FK_6be4e1a698f5c3f2c2e4c75c186" FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "customer_refresh_tokens" ADD CONSTRAINT "FK_64ee8c9d54275883c6068e70a12" FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
@@ -32,6 +35,9 @@ export class Customers1790340045167 implements MigrationInterface {
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_952f070ca31b95def7ecfcdb89"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_772d0ce0473ac2ccfa26060dbe"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_a8fcf679692db1c886e7f15d2b"`);
         await queryRunner.query(`ALTER TABLE "customer_tokens" DROP CONSTRAINT "FK_603f63d478610e2c71e15dffc57"`);
         await queryRunner.query(`ALTER TABLE "customer_refresh_tokens" DROP CONSTRAINT "FK_64ee8c9d54275883c6068e70a12"`);
         await queryRunner.query(`ALTER TABLE "customer_addresses" DROP CONSTRAINT "FK_6be4e1a698f5c3f2c2e4c75c186"`);

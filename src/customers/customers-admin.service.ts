@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, SelectQueryBuilder } from "typeorm";
 import { Clock } from "../common/clock/clock";
+import { csvCell, csvRow } from "../common/csv";
 import { AppException } from "../common/errors/app-exception";
 import { OffsetPage, toOffsetPage } from "../common/pagination/pagination";
 import { escapeLike } from "../common/sql/escape-like";
@@ -23,13 +24,6 @@ export const EXPORT_MAX_ROWS = 50_000;
 const EXPORT_BATCH = 1000;
 const DETAIL_MAX_ORDERS = 100;
 const CSV_HEADER = ["id", "email", "firstName", "lastName", "phone", "acceptsMarketing", "marketingConsentAt", "emailVerifiedAt", "isActive", "tags", "createdAt", "lastLoginAt"];
-
-/** CSV cell: neutralise spreadsheet formulas (= + - @ and control prefixes) with a leading quote, then RFC 4180 quoting. */
-export function csvCell(value: unknown): string {
-  let text = value === null || value === undefined ? "" : value instanceof Date ? value.toISOString() : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
 
 @Injectable()
 export class CustomersAdminService {
@@ -141,7 +135,7 @@ export class CustomersAdminService {
    */
   async *exportCsv(query: CustomerExportQuery): AsyncGenerator<string> {
     await this.audit.record({ action: "customer:export", entityType: "Customer" });
-    yield `${CSV_HEADER.join(",")}\r\n`;
+    yield csvRow(CSV_HEADER);
 
     let lastId: string | null = null;
     let sent = 0;
@@ -152,11 +146,13 @@ export class CustomersAdminService {
       if (rows.length === 0) return;
 
       yield rows
-        .map((c) =>
-          [c.id, c.email, c.firstName, c.lastName, c.phone, c.acceptsMarketing, c.marketingConsentAt, c.emailVerifiedAt, c.isActive, c.tags.join("|"), c.createdAt, c.lastLoginAt]
+        .map((c) => {
+          // marketing consent only counts once the mailbox is verified
+          const consents = c.acceptsMarketing && !!c.emailVerifiedAt;
+          return [c.id, c.email, c.firstName, c.lastName, c.phone, consents, consents ? c.marketingConsentAt : null, c.emailVerifiedAt, c.isActive, c.tags.join("|"), c.createdAt, c.lastLoginAt]
             .map(csvCell)
-            .join(","),
-        )
+            .join(",");
+        })
         .join("\r\n") + "\r\n";
 
       sent += rows.length;
@@ -171,7 +167,10 @@ export class CustomersAdminService {
     if (query.q) {
       qb.andWhere("(c.email ILIKE :q ESCAPE '\\' OR (c.firstName || ' ' || c.lastName) ILIKE :q ESCAPE '\\')", { q: `%${escapeLike(query.q)}%` });
     }
-    if (query.acceptsMarketing !== undefined) qb.andWhere("c.acceptsMarketing = :am", { am: query.acceptsMarketing });
+    if (query.acceptsMarketing !== undefined) {
+      // consent only counts when the e-mail is verified
+      qb.andWhere(query.acceptsMarketing ? "(c.acceptsMarketing = true AND c.emailVerifiedAt IS NOT NULL)" : "NOT (c.acceptsMarketing = true AND c.emailVerifiedAt IS NOT NULL)");
+    }
     if (query.isActive !== undefined) qb.andWhere("c.isActive = :ia", { ia: query.isActive });
     if (query.tag) qb.andWhere(":tag = ANY(c.tags)", { tag: query.tag });
     return qb;

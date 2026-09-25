@@ -21,7 +21,7 @@ import { seedEmailTemplates } from "./seed-templates";
     {
       provide: MAIL_TRANSPORT,
       inject: [ENV],
-      useFactory: (env: Env): MailTransport => (env.MAIL_TRANSPORT === "smtp" ? new SmtpTransport(env) : new LogTransport()),
+      useFactory: (env: Env): MailTransport => (env.MAIL_TRANSPORT === "smtp" ? new SmtpTransport(env) : new LogTransport(env)),
     },
   ],
   controllers: [EmailTemplatesController],

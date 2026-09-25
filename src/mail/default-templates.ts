@@ -10,6 +10,7 @@
  *   welcome            : customerName, storeUrl
  *   refund_issued      : customerName, orderNumber, amount, orderUrl
  *   newsletter_confirm : confirmUrl, unsubscribeUrl
+ *   account_exists     : customerName, resetUrl (link to the forgot-password page; carries no token)
  * Links (`*Url`) are built by the caller from STOREFRONT_URL.
  */
 
@@ -22,6 +23,7 @@ export const TEMPLATE_VARIABLES = {
   welcome: ["customerName", "storeUrl"],
   refund_issued: ["customerName", "orderNumber", "amount", "orderUrl"],
   newsletter_confirm: ["confirmUrl", "unsubscribeUrl"],
+  account_exists: ["customerName", "resetUrl"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type TemplateKey = keyof typeof TEMPLATE_VARIABLES;
@@ -42,6 +44,7 @@ export const SAMPLE_DATA: Record<TemplateKey, Record<string, string>> = {
   welcome: { customerName: "Ana", storeUrl: "https://example.com" },
   refund_issued: { customerName: "Ana", orderNumber: "DD-1001", amount: "$250.000", orderUrl: "https://example.com/pedidos/DD-1001" },
   newsletter_confirm: { confirmUrl: "https://example.com/newsletter/confirmar?token=ejemplo", unsubscribeUrl: "https://example.com/newsletter/baja?token=ejemplo" },
+  account_exists: { customerName: "Ana", resetUrl: "https://example.com/account/forgot-password" },
 };
 
 export interface DefaultTemplate {
@@ -136,5 +139,14 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
       `<p>Para recibir nuestras novedades, confirma tu suscripción.</p>${button("{{ confirmUrl }}", "Confirmar suscripción")}<p style="font-size:12px;color:#71717a;">Si no lo solicitaste, ignora este mensaje o <a href="{{ unsubscribeUrl }}">cancela aquí</a>.</p>`,
     ),
     bodyText: "Para recibir nuestras novedades, confirma tu suscripción:\n{{ confirmUrl }}\n\nSi no lo solicitaste, ignora este mensaje o cancela aquí: {{ unsubscribeUrl }}\n",
+  },
+  {
+    key: "account_exists",
+    subject: "Ya tienes una cuenta en Daregular Dept.",
+    bodyHtml: layout(
+      "Ya tienes una cuenta",
+      `<p>Hola {{ customerName }}, alguien intentó crear una cuenta con este correo, pero ya existe una asociada a él.</p><p>Si fuiste tú y no recuerdas tu contraseña, puedes restablecerla aquí:</p>${button("{{ resetUrl }}", "Restablecer contraseña")}<p>Si no fuiste tú, ignora este mensaje: tu cuenta no ha cambiado.</p>`,
+    ),
+    bodyText: "Hola {{ customerName }}, alguien intentó crear una cuenta con este correo, pero ya existe una asociada a él.\n\nSi fuiste tú y no recuerdas tu contraseña, puedes restablecerla aquí: {{ resetUrl }}\n\nSi no fuiste tú, ignora este mensaje: tu cuenta no ha cambiado.\n",
   },
 ];

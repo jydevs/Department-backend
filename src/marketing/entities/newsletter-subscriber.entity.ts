@@ -24,6 +24,7 @@ export class NewsletterSubscriber extends AppBaseEntity {
   @Column({ type: "char", length: 64, nullable: true })
   confirmTokenHash?: string | null;
 
+  /** LEGACY, unused: unsubscribe links are stateless HMAC tokens now (NewsletterService.unsubscribeToken). Kept so the schema does not change. */
   @Column({ type: "char", length: 64, nullable: true })
   unsubscribeTokenHash?: string | null;
 

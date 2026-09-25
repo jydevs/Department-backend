@@ -38,7 +38,8 @@ export class ForgotPasswordDto extends createZodDto(forgotPasswordSchema) {}
 export const resetPasswordSchema = z.object({ token: opaqueToken, password: passwordSchema }).strict();
 export class ResetPasswordDto extends createZodDto(resetPasswordSchema) {}
 
-export const verifyEmailSchema = z.object({ token: opaqueToken }).strict();
+/** The link proves mailbox ownership, so verifying also SETS the password (whoever registered the address first never keeps theirs). */
+export const verifyEmailSchema = z.object({ token: opaqueToken, password: passwordSchema }).strict();
 export class VerifyEmailDto extends createZodDto(verifyEmailSchema) {}
 
 /* ── account requests ─────────────────────────────────────── */
@@ -208,6 +209,8 @@ export interface CustomerDataExportDto {
   addresses: CustomerAddressDto[];
   orders: PublicOrderDto[];
   sessions: { createdAt: Date; expiresAt: Date; revokedAt: Date | null; userAgent: string | null; ip: string | null }[];
+  newsletter: { status: string; source: string; consentAt: Date | null; createdAt: Date } | null;
+  contactMessages: { name: string; subject: string | null; message: string; status: string; createdAt: Date }[];
 }
 
 export interface AdminCustomerDto {

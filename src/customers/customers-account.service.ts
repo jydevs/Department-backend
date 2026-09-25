@@ -20,7 +20,7 @@ import type {
 } from "./dto/customers.dto";
 import { Customer, CustomerAddress, CustomerRefreshToken } from "./entities";
 import { CustomerErasureService } from "./customer-erasure.service";
-import { MAX_ADDRESSES, queryRows, toAddressDto, toOrderSummary, toProfile, toPublicOrder } from "./customers-support";
+import { MAX_ADDRESSES, queryRows, recordFailedPassword, toAddressDto, toOrderSummary, toProfile, toPublicOrder } from "./customers-support";
 
 const EXPORT_MAX_ORDERS = 1000;
 
@@ -55,21 +55,23 @@ export class CustomersAccountService {
       patch.acceptsMarketing = input.acceptsMarketing;
       patch.marketingConsentAt = input.acceptsMarketing ? this.clock.now() : null; // consent is timestamped, withdrawal clears it
     }
-    if (Object.keys(patch).length > 0) await this.customers.update({ id: customerId }, patch);
+    if (Object.keys(patch).length > 0) {
+      await this.transactions.run(async (manager) => {
+        await manager.getRepository(Customer).update({ id: customerId }, { ...patch, version: () => "version + 1" });
+        await this.audit.record({ action: "CUSTOMER_PROFILE_UPDATED", entityType: "Customer", entityId: customerId, diff: { fields: Object.keys(patch) } }, manager);
+      });
+    }
     return toProfile(await this.requireCustomer(customerId));
   }
 
   /** Verifies the current password, then signs out every session (including this one). */
   async changePassword(customerId: string, currentPassword: string, newPassword: string): Promise<void> {
-    const customer = await this.requireCustomer(customerId);
-    if (!customer.passwordHash || !(await this.passwords.verify(currentPassword, customer.passwordHash))) {
-      throw AppException.badRequest("INVALID_PASSWORD", "The current password is incorrect");
-    }
+    await this.confirmPassword(customerId, currentPassword, "The current password is incorrect");
     const newHash = await this.passwords.hash(newPassword);
     const now = this.clock.now();
 
     await this.transactions.run(async (manager) => {
-      await manager.query("UPDATE customers SET password_hash = $2, version = version + 1 WHERE id = $1", [customerId, newHash]);
+      await manager.query("UPDATE customers SET password_hash = $2, failed_login_count = 0, locked_until = NULL, version = version + 1 WHERE id = $1", [customerId, newHash]);
       await manager.query("UPDATE customer_refresh_tokens SET revoked_at = $2 WHERE customer_id = $1 AND revoked_at IS NULL", [customerId, now]);
       await this.audit.record({ action: "CUSTOMER_PASSWORD_CHANGED", entityType: "Customer", entityId: customerId }, manager);
     });
@@ -183,7 +185,7 @@ export class CustomersAccountService {
 
   /** Only the caller's own order; any other number answers 404 exactly like a missing one. */
   async getOrder(customerId: string, orderNumber: number): Promise<PublicOrderDto> {
-    const order = await this.orders.findOne({ where: { customerId, orderNumber }, relations: { lines: true, fulfillments: true } });
+    const order = await this.orders.findOne({ where: { customerId, orderNumber, status: Not("expired") }, relations: { lines: true, fulfillments: true } });
     if (!order) throw AppException.notFound("Order");
     return toPublicOrder(order, order.lines ?? [], order.fulfillments ?? []);
   }
@@ -192,7 +194,7 @@ export class CustomersAccountService {
 
   async exportData(customerId: string): Promise<CustomerDataExportDto> {
     const customer = await this.requireCustomer(customerId);
-    const [addresses, orders, sessions] = await Promise.all([
+    const [addresses, orders, sessions, newsletter, contacts] = await Promise.all([
       this.listAddresses(customerId),
       this.orders.find({
         where: { customerId },
@@ -201,6 +203,16 @@ export class CustomersAccountService {
         take: EXPORT_MAX_ORDERS,
       }),
       this.sessions.find({ where: { customerId }, order: { createdAt: "DESC" }, take: 100 }),
+      queryRows<{ status: string; source: string; consent_at: Date | null; created_at: Date }>(
+        this.customers.manager,
+        "SELECT status, source, consent_at, created_at FROM newsletter_subscribers WHERE email = $1",
+        [customer.email],
+      ),
+      queryRows<{ name: string; subject: string | null; message: string; status: string; created_at: Date }>(
+        this.customers.manager,
+        "SELECT name, subject, message, status, created_at FROM contact_messages WHERE lower(email) = $1 ORDER BY created_at DESC LIMIT 200",
+        [customer.email],
+      ),
     ]);
 
     await this.audit.record({ action: "CUSTOMER_DATA_EXPORT", entityType: "Customer", entityId: customerId });
@@ -216,19 +228,35 @@ export class CustomersAccountService {
         userAgent: s.userAgent ?? null,
         ip: s.ip ?? null,
       })),
+      newsletter: newsletter[0]
+        ? { status: newsletter[0].status, source: newsletter[0].source, consentAt: newsletter[0].consent_at, createdAt: newsletter[0].created_at }
+        : null,
+      contactMessages: contacts.map((m) => ({ name: m.name, subject: m.subject, message: m.message, status: m.status, createdAt: m.created_at })),
     };
   }
 
   /** Anonymizes the account after confirming the password. */
   async deleteAccount(customerId: string, password: string): Promise<void> {
-    const customer = await this.requireCustomer(customerId);
-    if (!customer.passwordHash || !(await this.passwords.verify(password, customer.passwordHash))) {
-      throw AppException.badRequest("INVALID_PASSWORD", "The password is incorrect");
-    }
+    await this.confirmPassword(customerId, password, "The password is incorrect");
     await this.transactions.run((manager) => this.erasure.erase(manager, customerId, "CUSTOMER_SELF_ERASED"));
   }
 
   /* ── internals ────────────────────────────────────────── */
+
+  /**
+   * Password re-confirmation for sensitive actions. Failures feed the same atomic lockout counter as the login
+   * (5 misses / 15 min); a locked account cannot be used to guess the password through these endpoints either.
+   */
+  private async confirmPassword(customerId: string, password: string, message: string): Promise<void> {
+    const customer = await this.requireCustomer(customerId);
+    const now = this.clock.now();
+    const locked = !!customer.lockedUntil && customer.lockedUntil > now;
+    const ok = !!customer.passwordHash && (await this.passwords.verify(password, customer.passwordHash));
+    if (locked || !ok) {
+      if (!locked) await recordFailedPassword(this.customers.manager, customerId, now);
+      throw AppException.badRequest("INVALID_PASSWORD", message);
+    }
+  }
 
   private async requireCustomer(customerId: string): Promise<Customer> {
     const customer = await this.customers.findOne({ where: { id: customerId } });

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Inject, Injectable, OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, EntityManager, IsNull, Repository } from "typeorm";
 import { v7 as uuidv7 } from "uuid";
@@ -14,14 +14,14 @@ import { PasswordService } from "../../identity/auth/password.service";
 import { MailService } from "../../mail/mail.service";
 import type { CustomerLoginResponse, CustomerRefreshResponse, RegisterInput } from "../dto/customers.dto";
 import { Customer, CustomerRefreshToken } from "../entities";
-import { linkGuestOrders, queryRows, toProfile } from "../customers-support";
+import { linkGuestOrders, queryRows, recordFailedPassword, toProfile } from "../customers-support";
 import { CustomerTokenService } from "./customer-token.service";
 
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000;
 const VERIFY_TTL_MS = 48 * 60 * 60 * 1000;
-const MAX_FAILED_LOGINS = 5;
-const LOCK_MS = 15 * 60 * 1000;
+/** No second link of the same type is issued while an unused one younger than this exists (anti mail-bombing). */
+const TOKEN_COOLDOWN_MS = 2 * 60 * 1000;
 
 type OneTimeTokenType = "password_reset" | "email_verify";
 
@@ -31,6 +31,7 @@ type OneTimeTokenType = "password_reset" | "email_verify";
  */
 @Injectable()
 export class CustomerAuthService implements OnModuleInit {
+  private readonly logger = new Logger(CustomerAuthService.name);
   private dummyHash = "";
 
   constructor(
@@ -53,11 +54,15 @@ export class CustomerAuthService implements OnModuleInit {
   /* ── register ─────────────────────────────────────────── */
 
   /**
-   * Never reveals whether the email exists. The password is hashed in every case so timing does not differ;
-   * an existing account is left untouched (a guest record without password just gets a reset link, which
-   * proves mailbox ownership before anyone can set a password on it).
+   * Answers immediately and does the real work afterwards, so the response time never depends on whether the
+   * email exists (argon2 hashing, inserts and mail all happen after the 202). An existing account is left
+   * untouched and its owner gets an "account_exists" mail with a link to the forgot-password page (no token).
    */
-  async register(input: RegisterInput): Promise<void> {
+  register(input: RegisterInput): void {
+    this.defer("register", () => this.performRegister(input));
+  }
+
+  private async performRegister(input: RegisterInput): Promise<void> {
     const now = this.clock.now();
     const passwordHash = await this.passwords.hash(input.password);
 
@@ -74,20 +79,37 @@ export class CustomerAuthService implements OnModuleInit {
       const created = inserted[0];
       if (created) {
         const token = await this.issueToken(manager, created.id, "email_verify", VERIFY_TTL_MS, now);
-        await this.mail.enqueue(
-          { to: input.email, template: "email_verify", data: { customerName: input.firstName, verifyUrl: this.link("verify-email", token), expiresInHours: 48 } },
-          manager,
-        );
+        if (token) {
+          await this.mail.enqueue(
+            { to: input.email, template: "email_verify", data: { customerName: input.firstName, verifyUrl: this.link("verify-email", token), expiresInHours: 48 } },
+            manager,
+          );
+        }
         return;
       }
 
-      const existing = await queryRows<{ id: string; first_name: string }>(
+      // the address already has an account (nothing else creates customers, so it always has a password): tell its owner
+      const existing = await queryRows<{ first_name: string }>(
         manager,
-        "SELECT id, first_name FROM customers WHERE email = $1 AND password_hash IS NULL AND is_active = true AND anonymized_at IS NULL AND deleted_at IS NULL",
+        "SELECT first_name FROM customers WHERE email = $1 AND is_active = true AND anonymized_at IS NULL AND deleted_at IS NULL",
         [input.email],
       );
-      const guest = existing[0];
-      if (guest) await this.sendPasswordReset(manager, guest.id, input.email, guest.first_name, now);
+      const owner = existing[0];
+      if (!owner) return;
+      const recent = await queryRows<{ id: string }>(
+        manager,
+        "SELECT id FROM email_outbox WHERE \"to\" = $1 AND template = 'account_exists' AND created_at > $2 LIMIT 1",
+        [input.email, new Date(now.getTime() - TOKEN_COOLDOWN_MS)],
+      );
+      if (recent.length > 0) return;
+      await this.mail.enqueue(
+        {
+          to: input.email,
+          template: "account_exists",
+          data: { customerName: owner.first_name, resetUrl: `${this.env.STOREFRONT_URL.replace(/\/+$/, "")}/account/forgot-password` },
+        },
+        manager,
+      );
     });
   }
 
@@ -105,7 +127,7 @@ export class CustomerAuthService implements OnModuleInit {
 
     if (!customer || !usable || !passwordOk || locked) {
       // a locked account is not touched again: attackers must not be able to extend the lock forever
-      if (customer && usable && !locked) await this.recordFailedLogin(customer.id, now);
+      if (customer && usable && !locked) await recordFailedPassword(this.dataSource, customer.id, now);
       throw AppException.unauthorized("Invalid credentials", "INVALID_CREDENTIALS");
     }
 
@@ -190,8 +212,12 @@ export class CustomerAuthService implements OnModuleInit {
 
   /* ── forgot / reset / verify ──────────────────────────── */
 
-  /** Callers answer 202 whatever happens here. */
-  async forgotPassword(email: string): Promise<void> {
+  /** Answers immediately (202) and works afterwards: timing cannot reveal whether the account exists. */
+  forgotPassword(email: string): void {
+    this.defer("forgotPassword", () => this.performForgotPassword(email));
+  }
+
+  private async performForgotPassword(email: string): Promise<void> {
     const customer = await this.customers.findOne({ where: { email: email.toLowerCase() } });
     if (!customer || !customer.isActive || customer.anonymizedAt) return;
     const now = this.clock.now();
@@ -228,24 +254,33 @@ export class CustomerAuthService implements OnModuleInit {
     });
   }
 
-  async verifyEmail(token: string): Promise<void> {
+  /**
+   * The emailed link proves the mailbox is theirs, NOT that whoever typed the password at registration owns it.
+   * So verifying REPLACES the password with the one sent now, kills every session and only then links guest orders.
+   */
+  async verifyEmail(token: string, password: string): Promise<void> {
     const now = this.clock.now();
+    const newHash = await this.passwords.hash(password);
 
     await this.transactions.run(async (manager) => {
       const customerId = await this.consumeToken(manager, token, "email_verify", now);
       const updated = await queryRows<{ id: string; email: string; first_name: string; was_verified: boolean }>(
         manager,
         `UPDATE customers c
-            SET email_verified_at = COALESCE(c.email_verified_at, $2), version = c.version + 1
+            SET password_hash = $3, failed_login_count = 0, locked_until = NULL,
+                email_verified_at = COALESCE(c.email_verified_at, $2), version = c.version + 1
            FROM customers old
           WHERE c.id = $1 AND old.id = c.id AND c.is_active = true AND c.anonymized_at IS NULL AND c.deleted_at IS NULL
           RETURNING c.id, c.email, c.first_name, (old.email_verified_at IS NOT NULL) AS was_verified`,
-        [customerId, now],
+        [customerId, now, newHash],
       );
       const customer = updated[0];
       if (!customer) throw AppException.badRequest("INVALID_TOKEN", "The link is invalid or has expired");
 
+      await manager.query("UPDATE customer_refresh_tokens SET revoked_at = $2 WHERE customer_id = $1 AND revoked_at IS NULL", [customer.id, now]);
+      await manager.query("UPDATE customer_tokens SET used_at = $2 WHERE customer_id = $1 AND used_at IS NULL", [customer.id, now]);
       await linkGuestOrders(manager, customer.id, customer.email);
+      await this.audit.record({ action: "CUSTOMER_EMAIL_VERIFIED", entityType: "Customer", entityId: customer.id }, manager);
       if (!customer.was_verified) {
         await this.mail.enqueue({ to: customer.email, template: "welcome", data: { customerName: customer.first_name, storeUrl: this.env.STOREFRONT_URL } }, manager);
       }
@@ -268,8 +303,17 @@ export class CustomerAuthService implements OnModuleInit {
     return row.customer_id;
   }
 
-  /** New one-time token; earlier unused tokens of the same type stop working. Stores only the sha256. */
-  private async issueToken(manager: EntityManager, customerId: string, type: OneTimeTokenType, ttlMs: number, now: Date): Promise<string> {
+  /**
+   * New one-time token; earlier unused tokens of the same type stop working. Stores only the sha256.
+   * Returns null (nothing issued) when an unused token of this type was created less than 2 minutes ago.
+   */
+  private async issueToken(manager: EntityManager, customerId: string, type: OneTimeTokenType, ttlMs: number, now: Date): Promise<string | null> {
+    const recent = await queryRows<{ id: string }>(
+      manager,
+      "SELECT id FROM customer_tokens WHERE customer_id = $1 AND type = $2 AND used_at IS NULL AND created_at > $3 LIMIT 1",
+      [customerId, type, new Date(now.getTime() - TOKEN_COOLDOWN_MS)],
+    );
+    if (recent.length > 0) return null;
     await manager.query("UPDATE customer_tokens SET used_at = $3 WHERE customer_id = $1 AND type = $2 AND used_at IS NULL", [customerId, type, now]);
     const { token, hash } = this.tokens.generateOpaque();
     await manager.query(
@@ -281,22 +325,18 @@ export class CustomerAuthService implements OnModuleInit {
 
   private async sendPasswordReset(manager: EntityManager, customerId: string, email: string, firstName: string, now: Date): Promise<void> {
     const token = await this.issueToken(manager, customerId, "password_reset", RESET_TTL_MS, now);
+    if (!token) return; // a link was issued less than 2 minutes ago
     await this.mail.enqueue({ to: email, template: "password_reset", data: { customerName: firstName, resetUrl: this.link("reset-password", token), expiresInMinutes: 60 } }, manager);
+  }
+
+  /** Runs the work after the HTTP response; failures are logged, never thrown at the caller. */
+  private defer(label: string, work: () => Promise<void>): void {
+    setImmediate(() => {
+      work().catch((err: unknown) => this.logger.error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`));
+    });
   }
 
   private link(page: "verify-email" | "reset-password", token: string): string {
     return `${this.env.STOREFRONT_URL.replace(/\/+$/, "")}/account/${page}?token=${encodeURIComponent(token)}`;
-  }
-
-  /**
-   * Count a failed attempt in ONE atomic statement (parallel guesses cannot undercount) and lock after 5.
-   * An expired lock restarts the count at 1 instead of re-locking on the very next miss.
-   */
-  private async recordFailedLogin(customerId: string, now: Date): Promise<void> {
-    const next = "CASE WHEN locked_until IS NOT NULL AND locked_until <= $2 THEN 1 ELSE failed_login_count + 1 END";
-    await this.dataSource.query(
-      `UPDATE customers SET failed_login_count = ${next}, locked_until = CASE WHEN (${next}) >= ${MAX_FAILED_LOGINS} THEN $3::timestamptz ELSE NULL END WHERE id = $1`,
-      [customerId, now, new Date(now.getTime() + LOCK_MS)],
-    );
   }
 }

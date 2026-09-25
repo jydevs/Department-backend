@@ -22,8 +22,8 @@ export class MarketingStorefrontController {
   @Post("newsletter")
   @HttpCode(202)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  async subscribe(@Body() body: SubscribeNewsletterDto): Promise<AcceptedResponse> {
-    await this.newsletter.subscribe(body.email, body.source);
+  subscribe(@Body() body: SubscribeNewsletterDto): AcceptedResponse {
+    this.newsletter.subscribe(body.email, body.source);
     return { accepted: true };
   }
 
