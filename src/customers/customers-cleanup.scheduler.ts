@@ -49,6 +49,7 @@ export class CustomersCleanupScheduler implements OnModuleInit, OnModuleDestroy 
       const customers = await this.deleteInBatches(
         `SELECT c.id FROM customers c
           WHERE c.email_verified_at IS NULL AND c.anonymized_at IS NULL AND c.created_at < $1
+            AND c.password_hash IS NOT NULL -- password-less guests (CSV import) wait for their reset e-mail; not tag based, so editing tags cannot expose them
             AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)
             AND NOT EXISTS (SELECT 1 FROM customer_addresses a WHERE a.customer_id = c.id)
           ORDER BY c.id LIMIT $2 FOR UPDATE OF c SKIP LOCKED`,

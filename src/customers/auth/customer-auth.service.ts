@@ -14,7 +14,7 @@ import { PasswordService } from "../../identity/auth/password.service";
 import { MailService } from "../../mail/mail.service";
 import type { CustomerLoginResponse, CustomerRefreshResponse, RegisterInput } from "../dto/customers.dto";
 import { Customer, CustomerRefreshToken } from "../entities";
-import { linkGuestOrders, queryRows, recordFailedPassword, toProfile } from "../customers-support";
+import { isEmailSuppressed, linkGuestOrders, queryRows, recordFailedPassword, toProfile } from "../customers-support";
 import { CustomerTokenService } from "./customer-token.service";
 
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -67,6 +67,10 @@ export class CustomerAuthService implements OnModuleInit {
     const passwordHash = await this.passwords.hash(input.password);
 
     await this.transactions.run(async (manager) => {
+      // Habeas Data: an erased data subject is not recreated by a registration (still a silent 202, nothing revealed).
+      // Limitation: they cannot self-register again until staff delete their row in erasure_suppressions (see docs/API.md).
+      if (await isEmailSuppressed(manager, input.email)) return;
+
       const inserted = await queryRows<{ id: string }>(
         manager,
         `INSERT INTO customers (id, email, password_hash, first_name, last_name, accepts_marketing, marketing_consent_at, version)
@@ -88,7 +92,7 @@ export class CustomerAuthService implements OnModuleInit {
         return;
       }
 
-      // the address already has an account (nothing else creates customers, so it always has a password): tell its owner
+      // the address already has an account (it may be a password-less guest created by the importer): tell its owner
       const existing = await queryRows<{ first_name: string }>(
         manager,
         "SELECT first_name FROM customers WHERE email = $1 AND is_active = true AND anonymized_at IS NULL AND deleted_at IS NULL",

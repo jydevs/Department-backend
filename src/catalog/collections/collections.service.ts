@@ -4,6 +4,7 @@ import { DataSource, In, QueryFailedError, Repository } from "typeorm";
 import { v7 as uuidv7 } from "uuid";
 import { Collection, CollectionProduct, Product } from "../../catalog/entities";
 import { AppException } from "../../common/errors/app-exception";
+import { sanitizeRichText } from "../../common/html/sanitize";
 import { SqlParams } from "../../common/sql/sql-params";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
@@ -59,7 +60,7 @@ export class CollectionsService {
       collection.id = uuidv7();
       collection.handle = input.handle;
       collection.title = input.title;
-      collection.descriptionHtml = input.descriptionHtml ?? "";
+      collection.descriptionHtml = sanitizeRichText(input.descriptionHtml ?? "");
       collection.type = input.type;
       collection.rules = input.type === "smart" ? (input.rules ?? null) : null;
       collection.sortOrder = input.sortOrder ?? "manual";
@@ -115,9 +116,10 @@ export class CollectionsService {
         diff.title = { old: collection.title, new: input.title };
         collection.title = input.title;
       }
-      if (input.descriptionHtml !== undefined && input.descriptionHtml !== collection.descriptionHtml) {
-        diff.descriptionHtml = { old: collection.descriptionHtml, new: input.descriptionHtml };
-        collection.descriptionHtml = input.descriptionHtml;
+      const cleanDescription = input.descriptionHtml !== undefined ? sanitizeRichText(input.descriptionHtml) : undefined;
+      if (cleanDescription !== undefined && cleanDescription !== collection.descriptionHtml) {
+        diff.descriptionHtml = { old: collection.descriptionHtml, new: cleanDescription };
+        collection.descriptionHtml = cleanDescription;
       }
       if (input.type !== undefined && input.type !== collection.type) {
         diff.type = { old: collection.type, new: input.type };

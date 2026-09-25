@@ -4,7 +4,7 @@ import { DataSource, EntityManager } from "typeorm";
 import { Clock } from "../common/clock/clock";
 import { AppException } from "../common/errors/app-exception";
 import { AuditService } from "../audit/audit.service";
-import { anonymizedEmail, queryRows } from "./customers-support";
+import { anonymizedEmail, emailSuppressionHash, queryRows } from "./customers-support";
 
 export const ANONYMIZE_ON_CLOSE_TAG = "anonymize-on-close";
 const CLOSED_STATUSES = "('completed', 'cancelled', 'expired')";
@@ -44,6 +44,12 @@ export class CustomerErasureService {
         WHERE id = $1`,
       [customerId, email, now],
     );
+
+    // remember only the hash of the erased address so imports / registrations cannot resurrect the data subject
+    await manager.query("INSERT INTO erasure_suppressions (email_hash, created_at) VALUES ($1, $2) ON CONFLICT (email_hash) DO NOTHING", [
+      emailSuppressionHash(originalEmail),
+      now,
+    ]);
 
     await manager.query("DELETE FROM customer_addresses WHERE customer_id = $1", [customerId]);
     await manager.query("DELETE FROM customer_tokens WHERE customer_id = $1", [customerId]);

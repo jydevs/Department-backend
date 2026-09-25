@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, EntityManager, In } from "typeorm";
 import { v7 as uuidv7 } from "uuid";
+import { sanitizeRichText } from "../../common/html/sanitize";
 import { Product, Variant, ProductOption, ProductOptionValue, ProductMedia, Media, CollectionProduct } from "../entities";
 import { AppException } from "../../common/errors/app-exception";
 import { TransactionService } from "../../database/transaction.service";
@@ -82,7 +83,7 @@ export class ProductsService {
       const product = new Product();
       product.id = uuidv7();
       product.title = input.title;
-      product.descriptionHtml = input.descriptionHtml || "";
+      product.descriptionHtml = sanitizeRichText(input.descriptionHtml || "");
       product.status = "draft"; // publication only through /publish
       product.vendor = input.vendor ?? null;
       product.productType = input.productType ?? null;
@@ -288,9 +289,10 @@ export class ProductsService {
         diff.title = { old: product.title, new: input.title };
         set.title = input.title;
       }
-      if (input.descriptionHtml !== undefined && input.descriptionHtml !== product.descriptionHtml) {
-        diff.descriptionHtml = { old: product.descriptionHtml, new: input.descriptionHtml };
-        set.descriptionHtml = input.descriptionHtml;
+      const cleanDescription = input.descriptionHtml !== undefined ? sanitizeRichText(input.descriptionHtml) : undefined;
+      if (cleanDescription !== undefined && cleanDescription !== product.descriptionHtml) {
+        diff.descriptionHtml = { old: product.descriptionHtml, new: cleanDescription };
+        set.descriptionHtml = cleanDescription;
       }
       if (input.handle !== undefined && input.handle !== product.handle) {
         const taken = await manager.getRepository(Product).findOne({ where: { handle: input.handle }, withDeleted: true });

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { EntityManager } from "typeorm";
 import type { Fulfillment } from "../commerce/entities/fulfillment.entity";
 import type { OrderLine } from "../commerce/entities/order-line.entity";
@@ -46,7 +47,16 @@ export async function linkGuestOrders(manager: EntityManager, customerId: string
   await manager.query("UPDATE orders SET customer_id = $1 WHERE email = $2 AND customer_id IS NULL", [customerId, email.toLowerCase()]);
 }
 
-export const anonymizedEmail = (customerId: string): string => `deleted+${customerId}@invalid`;
+/** sha256 (hex) of the trimmed, lower-cased e-mail: the only form in which an erased address is remembered. */
+export const emailSuppressionHash = (email: string): string => createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
+
+/** True when the address belongs to a customer erased under Habeas Data (see `erasure_suppressions`). */
+export async function isEmailSuppressed(runner: QueryRunnerLike, email: string): Promise<boolean> {
+  const rows = (await runner.query("SELECT 1 FROM erasure_suppressions WHERE email_hash = $1 LIMIT 1", [emailSuppressionHash(email)])) as unknown[];
+  return rows.length > 0;
+}
+
+export const anonymizedEmail =(customerId: string): string => `deleted+${customerId}@invalid`;
 
 /* ── mappers ──────────────────────────────────────────────── */
 

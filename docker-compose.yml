@@ -1,0 +1,56 @@
+# Reference setup: API + PostgreSQL 16. NOT tested locally (no Docker on the dev machine): adjust before relying on it.
+#
+#   docker compose up -d postgres
+#   docker compose run --rm api yarn migration:run:prod     # migrations are a deploy step, never run at boot
+#   (the first Owner is created with `yarn owner:create` from a dev checkout pointed at this database: it needs ts-node, not in the image)
+#   docker compose up -d api
+#
+# The API refuses to boot with NODE_ENV=production and missing/insecure settings (see src/config/env.ts).
+# For a local trial without TLS, keep NODE_ENV=development below; for real production use https URLs,
+# DATABASE_SSL=require|verify-full and every secret listed in README.md.
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: department
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d department"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4000:4000" # loopback only: this file runs NODE_ENV=development (docs on, mock payments). Never expose it as is
+    environment:
+      NODE_ENV: development # change to production (+ the production-only variables) when deploying
+      PORT: "4000"
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/department
+      DATABASE_SSL: disable
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+      PUBLIC_URL: http://localhost:4000
+      STOREFRONT_URL: http://localhost:3000
+      ADMIN_URL: http://localhost:3001
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?openssl rand -hex 32}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?openssl rand -hex 32}
+      CUSTOMER_JWT_SECRET: ${CUSTOMER_JWT_SECRET:?openssl rand -hex 32}
+      PREVIEW_TOKEN_SECRET: ${PREVIEW_TOKEN_SECRET:?openssl rand -hex 32}
+      STOREFRONT_REVALIDATE_SECRET: ${STOREFRONT_REVALIDATE_SECRET:?openssl rand -hex 32}
+      STOREFRONT_SERVER_KEY: ${STOREFRONT_SERVER_KEY:?openssl rand -hex 32}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?openssl rand -base64 32}
+    volumes:
+      - uploads:/data/uploads
+
+volumes:
+  pgdata:
+  uploads:

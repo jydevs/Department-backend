@@ -20,6 +20,8 @@ import { CmsModule } from "./cms/cms.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { CommerceModule } from "./commerce/commerce.module";
 import { CustomersModule } from "./customers/customers.module";
+import { ImportsModule } from "./imports/imports.module";
+import { MaintenanceModule } from "./maintenance/maintenance.module";
 import { MailModule } from "./mail/mail.module";
 import { MarketingModule } from "./marketing/marketing.module";
 import { HealthModule } from "./health/health.module";
@@ -83,6 +85,8 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
     CustomersModule,
     MarketingModule,
     AnalyticsModule,
+    ImportsModule,
+    MaintenanceModule,
   ],
   providers: [
     // every request body/query/params is validated with Zod (DTOs from createZodDto)
