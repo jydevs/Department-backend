@@ -38,7 +38,7 @@ async function bootstrap() {
     origin: env.CORS_ORIGINS,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "Idempotency-Key", "If-Match"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "Idempotency-Key", "If-Match", "X-Cart-Token"],
     exposedHeaders: ["X-Request-Id", "Retry-After", "ETag"],
     maxAge: 600,
   });

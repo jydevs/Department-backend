@@ -5,6 +5,8 @@ import { AppBaseEntity } from "../../database/base.entity";
 @Entity("newsletter_subscribers")
 @Index(["email"], { unique: true })
 @Index(["status"])
+@Index(["confirmTokenHash"])
+@Index(["unsubscribeTokenHash"])
 export class NewsletterSubscriber extends AppBaseEntity {
   /** Stored lowercase (enforced by the service). */
   @Column({ type: "varchar", length: 255 })

@@ -49,6 +49,7 @@ export class TokenService {
 
     const token = await new SignJWT(payload)
       .setProtectedHeader({ alg: "HS256" })
+      .setAudience("admin")
       .setIssuedAt(iat)
       .setExpirationTime(exp)
       .sign(this.accessSecret);
@@ -60,7 +61,7 @@ export class TokenService {
     if (!this.accessSecret) return null;
 
     try {
-      const { payload } = await jwtVerify(token, this.accessSecret, { algorithms: ["HS256"], requiredClaims: ["exp", "sub"] });
+      const { payload } = await jwtVerify(token, this.accessSecret, { algorithms: ["HS256"], audience: "admin", requiredClaims: ["exp", "sub"] });
       return typeof payload.sub === "string" ? { ...payload, sub: payload.sub, role: String(payload.role ?? "") } : null;
     } catch {
       return null;

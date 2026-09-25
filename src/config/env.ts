@@ -89,6 +89,12 @@ const schema = z
     /** customer JWT (separate from the staff one) */
     CUSTOMER_JWT_SECRET: secret(32),
 
+    /** the mock payment provider can approve orders without paying: must be turned on explicitly, never in production */
+    MOCK_PAYMENTS_ENABLED: z
+      .enum(["true", "false", "1", "0"])
+      .default("false")
+      .transform((v) => v === "true" || v === "1"),
+
     /** how long an unpaid order keeps its stock reserved */
     ORDER_RESERVATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 
@@ -121,6 +127,7 @@ const schema = z
     for (const origin of env.CORS_ORIGINS) {
       if (!origin.startsWith("https://")) issue("CORS_ORIGINS", `"${origin}" must be https:// in production`);
     }
+    if (env.MOCK_PAYMENTS_ENABLED) issue("MOCK_PAYMENTS_ENABLED", "must be false in production");
     if (env.MAIL_TRANSPORT !== "smtp") issue("MAIL_TRANSPORT", "must be smtp in production");
     if (!env.SMTP_URL) issue("SMTP_URL", "is required in production");
     if (!env.CUSTOMER_JWT_SECRET) issue("CUSTOMER_JWT_SECRET", "is required in production");
