@@ -34,8 +34,8 @@ interface CountRow {
 }
 
 /**
- * Hourly housekeeping. Only ONE instance runs a pass at a time: a transaction on a dedicated connection takes
- * `pg_try_advisory_xact_lock`, which Postgres releases on commit/rollback or if the connection dies (no lock can leak).
+ * Hourly housekeeping. Only ONE instance runs a pass at a time: a dedicated connection takes
+ * the session lock `pg_try_advisory_lock` (released in `finally`, or by Postgres if the connection dies: no lock can leak).
  * Every task is isolated (a failure is logged and the rest still run) and deletes in batches of 1000 with LIMIT.
  *
  * Already handled elsewhere (NOT duplicated here): `customer_tokens` and unverified customers (CustomersCleanupScheduler),
@@ -69,22 +69,22 @@ export class MaintenanceService implements OnModuleInit, OnModuleDestroy {
     if (this.running) return { executed: false, tasks: [] };
     this.running = true;
     const runner = this.dataSource.createQueryRunner();
+    let locked = false;
     try {
       await runner.connect();
-      await runner.startTransaction();
-      const lock = await queryRows<{ locked: boolean }>(runner, "SELECT pg_try_advisory_xact_lock($1) AS locked", [ADVISORY_LOCK_KEY]);
-      if (!lock[0]?.locked) {
-        await runner.rollbackTransaction();
-        return { executed: false, tasks: [] };
-      }
+      // Session-level lock on a dedicated connection, NOT inside a transaction: an open transaction would sit
+      // "idle in transaction" while the tasks run on other connections and Postgres would kill it after 60 s.
+      const lock = await queryRows<{ locked: boolean }>(runner, "SELECT pg_try_advisory_lock($1) AS locked", [ADVISORY_LOCK_KEY]);
+      if (!lock[0]?.locked) return { executed: false, tasks: [] };
+      locked = true;
       const tasks = await this.runTasks();
-      await runner.commitTransaction();
       return { executed: true, tasks };
     } catch (err) {
       this.logger.error(`Maintenance pass failed: ${err instanceof Error ? err.message : String(err)}`);
-      if (runner.isTransactionActive) await runner.rollbackTransaction().catch(() => undefined);
       throw err;
     } finally {
+      // if this connection dies Postgres drops the session lock, so it cannot leak
+      if (locked) await runner.query("SELECT pg_advisory_unlock($1)", [ADVISORY_LOCK_KEY]).catch(() => undefined);
       await runner.release().catch(() => undefined);
       this.running = false;
     }

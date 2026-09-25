@@ -121,7 +121,7 @@ export class ImportWorker implements OnModuleInit, OnModuleDestroy {
     const key = importFileKey(id);
     const state: JobState = { totalRows: 0, processedRows: 0, created: 0, updated: 0, skipped: 0, errorCount: 0, errors: [] };
 
-    await this.audit.record({ action: "import:start", entityType: "ImportJob", entityId: id, diff: { type: job.type, dryRun: job.dryRun } }).catch(() => undefined);
+    await this.audit.record({ action: "import:start", entityType: "ImportJob", entityId: id, diff: { type: job.type, dryRun: job.dryRun, createdBy: job.createdBy ?? null } }).catch(() => undefined);
     try {
       const buffer = await this.files.read(key);
       if (!buffer) return await this.fail(job, state, "FILE_MISSING", "The uploaded CSV is no longer available; upload it again");
@@ -167,7 +167,7 @@ export class ImportWorker implements OnModuleInit, OnModuleDestroy {
             action: "import:finish",
             entityType: "ImportJob",
             entityId: id,
-            diff: { type: job.type, dryRun: job.dryRun, status: "done", totalRows: state.totalRows, created: state.created, updated: state.updated, skipped: state.skipped, errors: state.errorCount },
+            diff: { type: job.type, dryRun: job.dryRun, createdBy: job.createdBy ?? null, status: "done", totalRows: state.totalRows, created: state.created, updated: state.updated, skipped: state.skipped, errors: state.errorCount },
           })
           .catch(() => undefined);
       }

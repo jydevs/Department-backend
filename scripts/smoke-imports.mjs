@@ -110,6 +110,100 @@ export async function importChecks({ base, check, assert, ownerToken, analystTok
     }
   });
 
+  const stamp = Date.now().toString(36);
+  const withDb = async (fn) => {
+    if (!process.env.DATABASE_URL) return console.log("       (no DATABASE_URL: skipped)");
+    const require = createRequire(import.meta.url);
+    const { Client } = require("pg");
+    const db = new Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+      await fn(db);
+    } finally {
+      await db.end();
+    }
+  };
+  const seedCustomer = (db, email, { password, verified, marketing = false, consentAt = null, first = "Original" }) =>
+    db.query(
+      `INSERT INTO customers (id, email, password_hash, first_name, last_name, accepts_marketing, marketing_consent_at, email_verified_at, version)
+       VALUES (gen_random_uuid(), $1, $2, $3, 'Owner', $4, $5, $6, 1) RETURNING id`,
+      [email, password ? "$argon2id$dummy" : null, first, marketing, consentAt, verified ? new Date() : null],
+    );
+
+  await check("import: an existing UNVERIFIED account with a password is skipped and gets no personal data (H-1)", () =>
+    withDb(async (db) => {
+      const email = `victim-${stamp}@example.com`;
+      const { rows } = await seedCustomer(db, email, { password: true, verified: false });
+      const csv = `Email,First Name,Last Name,Phone,Accepts Email Marketing,Default Address Address1,Default Address City,Default Address Province,Default Address Phone\n${email},Real,Person,+573001112233,yes,Calle 1 # 2-3,Bogota,Cundinamarca,+573001112233\n`;
+      const job = await waitJob(await upload("unverified.csv", csv, "customers", false), "unverified account");
+      assert(job.status === "done" && job.errors.some((e) => e.code === "ACCOUNT_UNVERIFIED_SKIPPED"), `errors ${JSON.stringify(job.errors)}`);
+      const c = (await db.query("SELECT first_name, phone, accepts_marketing FROM customers WHERE id = $1", [rows[0].id])).rows[0];
+      assert(c.first_name === "Original" && c.phone === null && c.accepts_marketing === false, `PII merged: ${JSON.stringify(c)}`);
+      assert((await db.query("SELECT 1 FROM customer_addresses WHERE customer_id = $1", [rows[0].id])).rowCount === 0, "address added to an unverified account");
+    }));
+
+  await check("import: never re-subscribes an opted-out customer nor changes an existing consent date (M-1)", () =>
+    withDb(async (db) => {
+      const optedOut = `optout-${stamp}@example.com`;
+      const consented = `consent-${stamp}@example.com`;
+      const when = new Date("2024-01-02T03:04:05Z");
+      await seedCustomer(db, optedOut, { password: true, verified: true, marketing: false });
+      await seedCustomer(db, consented, { password: true, verified: true, marketing: true, consentAt: when });
+      const csv = `Email,First Name,Last Name,Accepts Email Marketing\n${optedOut},Nuevo,Nombre,yes\n${consented},Otro,Nombre,yes\n`;
+      const job = await waitJob(await upload("resub.csv", csv, "customers", false), "resubscribe");
+      assert(job.status === "done" && job.errorCount === 0, `errors ${JSON.stringify(job.errors)}`);
+      const a = (await db.query("SELECT accepts_marketing, marketing_consent_at FROM customers WHERE email = $1", [optedOut])).rows[0];
+      assert(a.accepts_marketing === false && a.marketing_consent_at === null, `opted-out customer re-subscribed: ${JSON.stringify(a)}`);
+      const b = (await db.query("SELECT marketing_consent_at FROM customers WHERE email = $1", [consented])).rows[0];
+      assert(new Date(b.marketing_consent_at).getTime() === when.getTime(), "existing consent date changed");
+    }));
+
+  await check("import: an erased data subject is not recreated (SUPPRESSED, Habeas Data)", () =>
+    withDb(async (db) => {
+      const email = `erased-${stamp}@example.com`;
+      const { rows } = await seedCustomer(db, email, { password: false, verified: false });
+      const erase = await fetch(`${api}/admin/customers/${rows[0].id}/erase`, { method: "POST", headers: auth });
+      assert(erase.status < 300, `erase → ${erase.status} ${await erase.text()}`);
+      const csv = `Email,First Name,Last Name,Accepts Email Marketing\n${email},Ghost,Person,yes\n`;
+      const job = await waitJob(await upload("erased.csv", csv, "customers", false), "erased subject");
+      assert(job.errors.some((e) => e.code === "SUPPRESSED"), `errors ${JSON.stringify(job.errors)}`);
+      assert((await db.query("SELECT 1 FROM customers WHERE email = $1", [email])).rowCount === 0, "the erased customer was recreated");
+      assert((await db.query("SELECT 1 FROM erasure_suppressions WHERE email_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex')", [email])).rowCount === 1, "no suppression hash stored");
+    }));
+
+  await check("import: a partial CSV (absent columns) does not degrade an existing product (M-3)", async () => {
+    const handle = `smoke-partial-${stamp}`;
+    const sku = `SMK-${stamp}`;
+    const full = `Handle,Title,Body (HTML),Vendor,Tags,Status,Variant SKU,Variant Price,Variant Compare At Price\n${handle},Smoke Partial,<p>Hola</p>,Dept,"a,b",active,${sku},50000,70000\n`;
+    const j1 = await waitJob(await upload("full.csv", full, "products", false), "full product");
+    assert(j1.status === "done" && j1.errorCount === 0, `full ${JSON.stringify(j1.errors)}`);
+    const partial = `Handle,Title,Variant Price\n${handle},Smoke Partial,60000\n`;
+    const j2 = await waitJob(await upload("partial.csv", partial, "products", false), "partial product");
+    assert(j2.status === "done" && j2.errorCount === 0, `partial ${JSON.stringify(j2.errors)}`);
+    const list = items(await (await fetch(`${api}/admin/products?q=${handle}`, { headers: auth })).json());
+    assert(list.length === 1, "product not found");
+    const p = await (await fetch(`${api}/admin/products/${list[0].id}`, { headers: auth })).json();
+    assert(p.status === "active", `status degraded to ${p.status}`);
+    assert(p.descriptionHtml.includes("Hola") && p.vendor === "Dept" && p.tags.length === 2, `fields wiped: ${JSON.stringify({ d: p.descriptionHtml, v: p.vendor, t: p.tags })}`);
+    const v = p.variants[0];
+    assert(v.price === 60000 && v.sku === sku && v.compareAtPrice === 70000, `variant: ${JSON.stringify(v)}`);
+  });
+
+  await check("admin API: descriptionHtml of products and collections is sanitized server side (M-5)", async () => {
+    const dirty = '<p onclick="x()">Hi</p><script>alert(1)</script><img src="javascript:alert(1)" onerror="x()"><a href="javascript:alert(1)">l</a>';
+    const create = await fetch(`${api}/admin/products`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ title: `Xss ${stamp}`, descriptionHtml: dirty }) });
+    assert(create.status < 300, `create product ${create.status} ${await create.clone().text()}`);
+    const product = await create.json();
+    const detail = await (await fetch(`${api}/admin/products/${product.id}`, { headers: auth })).json();
+    assert(detail.descriptionHtml.includes("Hi") && !/<script|onerror|onclick|javascript:/i.test(detail.descriptionHtml), `unsafe: ${detail.descriptionHtml}`);
+    const upd = await fetch(`${api}/admin/products/${product.id}`, { method: "PATCH", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ version: detail.version, descriptionHtml: dirty }) });
+    assert(upd.status < 300, `update product ${upd.status} ${await upd.clone().text()}`);
+    const col = await fetch(`${api}/admin/collections`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ title: `Xss ${stamp}`, handle: `xss-${stamp}`, type: "manual", descriptionHtml: dirty }) });
+    assert(col.status < 300, `create collection ${col.status} ${await col.clone().text()}`);
+    const collection = await col.json();
+    assert(!/<script|onerror|onclick|javascript:/i.test(collection.descriptionHtml ?? ""), `unsafe collection: ${collection.descriptionHtml}`);
+  });
+
   await check("import + maintenance: analysts are forbidden; the maintenance run reports per task", async () => {
     if (analystToken) {
       const denied = await upload("products.csv", productsCsv, "products", true, analystToken);

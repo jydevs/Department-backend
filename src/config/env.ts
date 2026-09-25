@@ -135,6 +135,9 @@ const schema = z
     for (const key of ["WOMPI_PUBLIC_KEY", "WOMPI_INTEGRITY_SECRET", "WOMPI_EVENTS_SECRET"] as const) {
       if (!env[key]) issue(key, "is required in production");
     }
+    // a sandbox/test Wompi setup in production would mark real orders as paid with test cards
+    if (env.WOMPI_PUBLIC_KEY && !env.WOMPI_PUBLIC_KEY.startsWith("pub_prod_")) issue("WOMPI_PUBLIC_KEY", "must be a production key (pub_prod_...) in production");
+    if (env.WOMPI_API_URL.toLowerCase().includes("sandbox")) issue("WOMPI_API_URL", "must not point to the sandbox in production (https://production.wompi.co/v1)");
     if (env.DATABASE_SSL === "disable") issue("DATABASE_SSL", "must be require or verify-full in production");
     if (env.TRUST_PROXY === false) issue("TRUST_PROXY", "must be set in production (proxy hop count), otherwise req.ip is the proxy's");
     for (const key of [

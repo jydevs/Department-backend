@@ -19,6 +19,11 @@ async function main() {
     process.exit(1);
   }
 
+  if (password.length < 12 || password.length > 256) {
+    console.error("Error: OWNER_PASSWORD must be between 12 and 256 characters");
+    process.exit(1);
+  }
+
   const dataSource = new DataSource(buildDbOptions(env));
 
   try {

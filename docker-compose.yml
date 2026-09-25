@@ -31,7 +31,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000" # loopback only: this file runs NODE_ENV=development (docs on, mock payments). Never expose it as is
     environment:
       NODE_ENV: development # change to production (+ the production-only variables) when deploying
       PORT: "4000"

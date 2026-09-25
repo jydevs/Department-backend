@@ -23,15 +23,16 @@ const MAX_STOCK = 1_000_000_000;
 
 interface ParsedVariant {
   line: number;
-  sku: string | null;
+  /** undefined (here and below) = the column is absent from the file: an existing variant keeps its value */
+  sku: string | null | undefined;
   optionValues: string[];
   title: string;
   price: number;
-  compareAtPrice: number | null;
-  weightGrams: number | null;
-  barcode: string | null;
-  trackInventory: boolean;
-  allowBackorder: boolean;
+  compareAtPrice: number | null | undefined;
+  weightGrams: number | null | undefined;
+  barcode: string | null | undefined;
+  trackInventory: boolean | undefined;
+  allowBackorder: boolean | undefined;
   qty: number | null;
 }
 
@@ -44,13 +45,15 @@ interface ParsedImage {
 interface ParsedProduct {
   handle: string;
   title: string;
-  bodyHtml: string;
-  vendor: string | null;
-  productType: string | null;
-  tags: string[];
-  seoTitle: string | null;
-  seoDescription: string | null;
-  wantActive: boolean;
+  /* undefined = the column is ABSENT from the file: the stored value is kept (an empty cell, in contrast, clears it) */
+  bodyHtml: string | undefined;
+  vendor: string | null | undefined;
+  productType: string | null | undefined;
+  tags: string[] | undefined;
+  seoTitle: string | null | undefined;
+  seoDescription: string | null | undefined;
+  /** undefined = neither Status nor Published column exists: an existing product keeps its status */
+  wantActive: boolean | undefined;
   optionNames: string[];
   variants: ParsedVariant[];
   images: ParsedImage[];
@@ -158,20 +161,25 @@ export class ProductImporter implements Importer {
 
     const title = cell(c.title);
     if (title.length > 255) throw new ImportRowException("INVALID_TITLE", "Title: at most 255 characters");
-    const vendor = cell(c.vendor) || null;
-    const productType = cell(c.type) || null;
-    const seoTitle = cell(c.seotitle) || null;
-    const seoDescription = cell(c.seodescription) || null;
+    // M-3: only columns present in the file update a field; an absent column never touches the stored value
+    const present = (col: string): boolean => c[col] !== undefined;
+    const optText = (col: string): string | null | undefined => (present(col) ? cell(c[col]) || null : undefined);
+    const vendor = optText("vendor");
+    const productType = optText("type");
+    const seoTitle = optText("seotitle");
+    const seoDescription = optText("seodescription");
     if ((vendor?.length ?? 0) > 255 || (productType?.length ?? 0) > 255 || (seoTitle?.length ?? 0) > 255 || (seoDescription?.length ?? 0) > 1000) {
       throw new ImportRowException("FIELD_TOO_LONG", "Vendor/Type/SEO fields exceed the allowed length");
     }
-    const bodyHtml = sanitizeBody(c.bodyhtml ?? "");
-    if (bodyHtml.length > 10_000) throw new ImportRowException("BODY_TOO_LONG", "Body (HTML): more than 10000 characters after sanitising");
-    const tags = parseTags(c.tags ?? "");
+    const bodyHtml = present("bodyhtml") ? sanitizeBody(c.bodyhtml ?? "") : undefined;
+    if (bodyHtml !== undefined && bodyHtml.length > 10_000) throw new ImportRowException("BODY_TOO_LONG", "Body (HTML): more than 10000 characters after sanitising");
+    const tags = present("tags") ? parseTags(c.tags ?? "") : undefined;
 
     const statusCell = cell(c.status).toLowerCase();
-    let wantActive: boolean;
-    if (statusCell !== "") {
+    let wantActive: boolean | undefined;
+    if (!present("status") && !present("published")) {
+      wantActive = undefined;
+    } else if (statusCell !== "") {
       if (!["active", "draft", "archived"].includes(statusCell)) throw new ImportRowException("INVALID_STATUS", "Status: expected active, draft or archived");
       wantActive = statusCell === "active";
     } else {
@@ -230,8 +238,8 @@ export class ProductImporter implements Importer {
       if (priceText === "") throw new ImportRowException("INVALID_PRICE", "Variant Price: required");
       const price = parseMoney(priceText, "Variant Price");
       const compareText = cell(r.variantcompareatprice);
-      const compareAtPrice = compareText === "" ? null : parseMoney(compareText, "Variant Compare At Price");
-      if (compareAtPrice !== null && compareAtPrice < price) throw new ImportRowException("INVALID_PRICE", "Variant Compare At Price: must be greater than or equal to the price");
+      const compareAtPrice = !present("variantcompareatprice") ? undefined : compareText === "" ? null : parseMoney(compareText, "Variant Compare At Price");
+      if (compareAtPrice !== null && compareAtPrice !== undefined && compareAtPrice < price) throw new ImportRowException("INVALID_PRICE", "Variant Compare At Price: must be greater than or equal to the price");
       const gramsText = cell(r.variantgrams);
       const barcode = cell(r.variantbarcode) || null;
       if ((barcode?.length ?? 0) > 120) throw new ImportRowException("FIELD_TOO_LONG", "Variant Barcode: at most 120 characters");
@@ -240,17 +248,19 @@ export class ProductImporter implements Importer {
       const policy = cell(r.variantinventorypolicy).toLowerCase();
       if (policy !== "" && policy !== "deny" && policy !== "continue") throw new ImportRowException("INVALID_POLICY", "Variant Inventory Policy: expected deny or continue");
 
+      const variantTitle = optionValues.length > 0 ? optionValues.join(" / ") : "Default Title";
+      if (variantTitle.length > 255) throw new ImportRowException("INVALID_OPTIONS", "Option values: the combined variant title exceeds 255 characters");
       variants.push({
         line: row.line,
-        sku: sku || null,
+        sku: present("variantsku") ? sku || null : undefined,
         optionValues,
-        title: optionValues.length > 0 ? optionValues.join(" / ") : "Default Title",
+        title: variantTitle,
         price,
         compareAtPrice,
-        weightGrams: gramsText === "" ? null : parseNonNegativeInt(gramsText, "Variant Grams", 100_000_000),
-        barcode,
-        trackInventory: cell(r.variantinventorytracker) !== "" || qty !== null,
-        allowBackorder: policy === "continue",
+        weightGrams: !present("variantgrams") ? undefined : gramsText === "" ? null : parseNonNegativeInt(gramsText, "Variant Grams", 100_000_000),
+        barcode: present("variantbarcode") ? barcode : undefined,
+        trackInventory: present("variantinventorytracker") || present("variantinventoryqty") ? cell(r.variantinventorytracker) !== "" || qty !== null : undefined,
+        allowBackorder: present("variantinventorypolicy") ? policy === "continue" : undefined,
         qty,
       });
     }
@@ -270,10 +280,12 @@ export class ProductImporter implements Importer {
     if (!existing && p.title === "") throw new ImportRowException("TITLE_REQUIRED", "Title: required to create a product");
 
     const archived = existing?.status === "archived";
-    if (p.wantActive && !archived && !p.variants.some((v) => v.price > 0)) {
+    // no Status/Published column: an existing product keeps its status (a partial price CSV must not unpublish the catalog)
+    const wantActive = p.wantActive ?? (existing ? existing.status === "active" : false);
+    if (wantActive && !archived && !p.variants.some((v) => v.price > 0)) {
       throw new ImportRowException("NOT_PUBLISHABLE", "An active product needs at least one variant with a price above 0");
     }
-    const status = archived ? "archived" : p.wantActive ? "active" : "draft";
+    const status = archived ? "archived" : wantActive ? "active" : "draft";
 
     const productRepo = m.getRepository(Product);
     let product: Product;
@@ -286,12 +298,12 @@ export class ProductImporter implements Importer {
       product.handle = p.handle;
     }
     if (p.title !== "") product.title = p.title;
-    product.descriptionHtml = p.bodyHtml;
-    product.vendor = p.vendor;
-    product.productType = p.productType;
-    product.tags = p.tags;
-    product.seoTitle = p.seoTitle;
-    product.seoDescription = p.seoDescription;
+    if (p.bodyHtml !== undefined) product.descriptionHtml = p.bodyHtml;
+    if (p.vendor !== undefined) product.vendor = p.vendor;
+    if (p.productType !== undefined) product.productType = p.productType;
+    if (p.tags !== undefined) product.tags = p.tags;
+    if (p.seoTitle !== undefined) product.seoTitle = p.seoTitle;
+    if (p.seoDescription !== undefined) product.seoDescription = p.seoDescription;
     product.status = status;
     if (status === "active" && !product.publishedAt) product.publishedAt = ctx.now;
     product = await productRepo.save(product);
@@ -388,14 +400,14 @@ export class ProductImporter implements Importer {
         target.productId = productId;
         target.position = nextPosition++;
       }
-      target.sku = pv.sku;
+      if (pv.sku !== undefined || !variant) target.sku = pv.sku ?? null;
       target.title = pv.title;
       target.price = pv.price;
-      target.compareAtPrice = pv.compareAtPrice;
-      target.weightGrams = pv.weightGrams;
-      target.barcode = pv.barcode;
-      target.trackInventory = pv.trackInventory;
-      target.allowBackorder = pv.allowBackorder;
+      if (pv.compareAtPrice !== undefined || !variant) target.compareAtPrice = pv.compareAtPrice ?? null;
+      if (pv.weightGrams !== undefined || !variant) target.weightGrams = pv.weightGrams ?? null;
+      if (pv.barcode !== undefined || !variant) target.barcode = pv.barcode ?? null;
+      if (pv.trackInventory !== undefined || !variant) target.trackInventory = pv.trackInventory ?? false;
+      if (pv.allowBackorder !== undefined || !variant) target.allowBackorder = pv.allowBackorder ?? false;
       target.optionValueIds = valueIds[i];
       target.isActive = true;
       const saved = await repo.save(target);

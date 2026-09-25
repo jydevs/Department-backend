@@ -3,6 +3,7 @@ import type { EntityManager } from "typeorm";
 import { v7 as uuidv7 } from "uuid";
 import { CustomerAddress } from "../customers/entities";
 import { firstRow } from "../common/sql/query-result";
+import { isEmailSuppressed } from "../customers/customers-support";
 import { cell, normalizeEmail, normalizePhone, parseBool, tryNormalizePhone } from "./cell-parsers";
 import {
   type BatchContext,
@@ -44,7 +45,8 @@ interface ExistingCustomer {
   first_name: string;
   last_name: string;
   phone: string | null;
-  accepts_marketing: boolean;
+  has_password: boolean;
+  is_verified: boolean;
   deleted_at: Date | null;
   anonymized_at: Date | null;
 }
@@ -52,7 +54,7 @@ interface ExistingCustomer {
 /**
  * Shopify "Customers" CSV export -> guest customers (password_hash NULL, email NOT verified).
  * They get an account through the storefront's forgot-password / register ("account exists") emails, whose
- * reset link sets a password and verifies the mailbox. Existing customers are never given a password or downgraded.
+ * reset link sets a password and verifies the mailbox. Existing customers are never given a password, downgraded or re-subscribed to marketing.
  */
 @Injectable()
 export class CustomerImporter implements Importer {
@@ -126,14 +128,20 @@ export class CustomerImporter implements Importer {
   }
 
   private async upsert(m: EntityManager, p: ParsedCustomer, ctx: BatchContext): Promise<UnitOutcome> {
+    // Habeas Data: an erased data subject is never recreated from a CSV (only the sha256 of the address is remembered)
+    if (await isEmailSuppressed(m, p.email)) throw new ImportRowException("SUPPRESSED", "Email: belongs to a data subject whose erasure was requested; row skipped");
+
     const existing = firstRow<ExistingCustomer>(
       await m.query(
-        "SELECT id, first_name, last_name, phone, accepts_marketing, deleted_at, anonymized_at FROM customers WHERE email = $1 LIMIT 1 FOR UPDATE",
+        `SELECT id, first_name, last_name, phone, deleted_at, anonymized_at, (password_hash IS NOT NULL) AS has_password, (email_verified_at IS NOT NULL) AS is_verified
+           FROM customers WHERE email = $1 LIMIT 1 FOR UPDATE`,
         [p.email],
       ),
     );
 
     if (!existing) {
+      // Marketing consent is only ever granted here, to a NEW guest, and only with an explicit yes/true. It still does not
+      // count until the mailbox is verified (exports and filters require email_verified_at).
       const inserted = firstRow<{ id: string }>(
         await m.query(
           `INSERT INTO customers (id, email, password_hash, first_name, last_name, phone, accepts_marketing, marketing_consent_at, tags, version)
@@ -149,24 +157,32 @@ export class CustomerImporter implements Importer {
 
     if (existing.deleted_at || existing.anonymized_at) throw new ImportRowException("CUSTOMER_UNAVAILABLE", "Email: belongs to a deleted or anonymised customer");
 
-    // Never touches password_hash, email verification, is_active or tags. Marketing can only be switched ON here.
+    // H-1: a password-protected account whose mailbox was never verified may have been registered by someone who does not own
+    // the address. Merging real name / phone / address into it would hand that personal data to the registrant, so the row is
+    // skipped entirely (chosen over "convert to guest and revoke sessions": it never destroys anything the registrant or the
+    // real owner might rely on, and the owner can still claim the account through forgot-password).
+    if (existing.has_password && !existing.is_verified) {
+      throw new ImportRowException("ACCOUNT_UNVERIFIED_SKIPPED", "Email: an account with an unverified mailbox already exists; row skipped to avoid leaking personal data");
+    }
+
+    // Never touches password_hash, verification, is_active, tags or marketing consent (M-1: an import can neither
+    // re-subscribe someone who opted out nor change an existing consent date).
     const firstName = p.firstName !== "" ? p.firstName : existing.first_name;
     const lastName = p.lastName !== "" ? p.lastName : existing.last_name;
     const phone = p.phone ?? existing.phone;
-    const enableMarketing = p.wantsMarketing && !existing.accepts_marketing;
     const hasAddress = p.address
       ? firstRow<{ id: string }>(await m.query("SELECT id FROM customer_addresses WHERE customer_id = $1 LIMIT 1", [existing.id])) !== undefined
       : true;
 
-    const changed = firstName !== existing.first_name || lastName !== existing.last_name || phone !== existing.phone || enableMarketing;
+    const changed = firstName !== existing.first_name || lastName !== existing.last_name || phone !== existing.phone;
     if (changed) {
-      await m.query(
-        `UPDATE customers SET first_name = $2, last_name = $3, phone = $4,
-                accepts_marketing = accepts_marketing OR $5, marketing_consent_at = CASE WHEN $5 THEN $6 ELSE marketing_consent_at END,
-                updated_at = $6, version = version + 1
-          WHERE id = $1`,
-        [existing.id, firstName, lastName, phone, enableMarketing, ctx.now],
-      );
+      await m.query("UPDATE customers SET first_name = $2, last_name = $3, phone = $4, updated_at = $5, version = version + 1 WHERE id = $1", [
+        existing.id,
+        firstName,
+        lastName,
+        phone,
+        ctx.now,
+      ]);
     }
     if (p.address && !hasAddress) {
       await this.addAddress(m, existing.id, p.address);

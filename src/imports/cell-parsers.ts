@@ -1,4 +1,4 @@
-import sanitizeHtml from "sanitize-html";
+import { sanitizeRichText } from "../common/html/sanitize";
 import { ImportRowException } from "./imports.types";
 
 export const HANDLE_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -82,17 +82,7 @@ export function tryNormalizePhone(raw: string): string | null {
   }
 }
 
-const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
-  allowedTags: ["p", "br", "strong", "em", "ul", "ol", "li", "h2", "h3", "h4", "a", "img"],
-  allowedAttributes: { a: ["href", "rel"], img: ["src", "alt"] },
-  allowedSchemes: [],
-  allowedSchemesByTag: { a: ["https", "mailto", "tel"], img: ["https"] },
-  allowProtocolRelative: false,
-  disallowedTagsMode: "discard",
-  transformTags: { a: sanitizeHtml.simpleTransform("a", { rel: "noopener noreferrer" }, true) },
-};
-
-/** `Body (HTML)` whitelist sanitiser: scripts, styles, event handlers and non-https links/images are dropped. */
+/** `Body (HTML)` whitelist sanitiser (shared with the admin API, see common/html/sanitize.ts). */
 export function sanitizeBody(html: string): string {
-  return sanitizeHtml(html, SANITIZE_OPTIONS).trim();
+  return sanitizeRichText(html);
 }

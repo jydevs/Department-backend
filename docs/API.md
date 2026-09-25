@@ -288,4 +288,21 @@ Tabla generada del código (`@Controller`/`@Get`/`@Post`…); ante duda manda `/
 | GET | `/admin/analytics/overview` · `/sales` · `/top-products` · `/customers` | A:analytics:read |
 | POST | `/admin/maintenance/run` (una pasada de mantenimiento; devuelve el resumen por tarea) | A:settings:write |
 
-> Importador Shopify (`/admin/import/jobs…`, permisos `import:read|write`): lo añade la Fase 8 (módulo `src/imports`); consulta OpenAPI cuando esté desplegado.
+### Importador Shopify (CSV)
+| Método | Ruta | Permiso |
+| --- | --- | --- |
+| POST | `/admin/import/jobs` (multipart: `file` = .csv, `type` = `products`|`customers`, `dryRun` opcional; responde 202 con el job `queued`) | A:import:write |
+| GET | `/admin/import/jobs` (lista) · `/admin/import/jobs/:id` (progreso, contadores y errores por fila) | A:import:read |
+| POST | `/admin/import/jobs/:id/cancel` | A:import:write |
+
+Límites: CSV UTF-8 (RFC 4180 estricto) de hasta 10 MB, 5000 filas, 64 columnas y 100 000 caracteres por celda. El CSV se borra al terminar el job. `dryRun` ejecuta todo y hace rollback.
+Semántica:
+- **Productos**: se agrupan por `Handle`. Solo las columnas PRESENTES en el archivo actualizan un campo; una columna ausente conserva el valor guardado (una celda vacía sí lo borra). Sin `Status`/`Published` un producto existente conserva su estado. `Body (HTML)` se sanea con la lista blanca del servidor.
+- **Clientes**: se crean como invitados sin contraseña ni email verificado. Con `Accepts Email Marketing=yes` solo se consiente en clientes NUEVOS (y solo cuenta cuando verifican el email); un cliente existente nunca cambia su consentimiento. Filas con código `ACCOUNT_UNVERIFIED_SKIPPED` (cuenta con contraseña y email sin verificar: no se le fusionan datos personales) o `SUPPRESSED` (titular cuya supresión Habeas Data se registró) se saltan y se reportan como error de fila.
+- `descriptionHtml` de productos y colecciones (API admin e importador) se guarda ya saneado con la misma lista blanca (`p, br, strong, em, ul, ol, li, h2-h4, a[https|mailto|tel], img[https]`).
+
+### Supresión (Habeas Data)
+Al anonimizar un cliente se guarda el sha256 del email normalizado en `erasure_suppressions`. El importador salta esas direcciones y `POST /storefront/customers/register` responde 202 sin crear nada ni revelar el motivo. Limitación: el propio titular no puede volver a registrarse hasta que el personal elimine su fila (`DELETE FROM erasure_suppressions WHERE email_hash = encode(sha256(convert_to('<email>','UTF8')),'hex')`); no hay endpoint de administración para ello todavía.
+
+### Mantenimiento
+`POST /admin/maintenance/run` (`settings:write`, 2/min, auditado) ejecuta la misma pasada horaria; solo una instancia a la vez (lock de sesión de Postgres). Los permisos de los roles de sistema se sincronizan con el código en cada arranque.

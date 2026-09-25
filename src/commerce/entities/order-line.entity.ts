@@ -24,7 +24,7 @@ export class OrderLine extends AppBaseEntity {
   @Column({ type: "uuid" })
   productId!: string;
 
-  @Column({ type: "varchar", length: 100, nullable: true })
+  @Column({ type: "varchar", length: 120, nullable: true })
   sku?: string | null;
 
   @Column({ type: "varchar", length: 255 })
@@ -33,7 +33,7 @@ export class OrderLine extends AppBaseEntity {
   @Column({ type: "varchar", length: 255 })
   variantTitle!: string;
 
-  @Column({ type: "varchar", length: 1000, nullable: true })
+  @Column({ type: "varchar", length: 2000, nullable: true })
   imageUrl?: string | null;
 
   @Column({ type: "bigint", transformer: moneyTransformer })
