@@ -461,6 +461,19 @@ export class ProductsService {
         diff.barcode = { old: variant.barcode, new: input.barcode };
         set.barcode = input.barcode ?? null;
       }
+      if (
+        (input.trackInventory !== undefined && input.trackInventory !== variant.trackInventory) ||
+        (input.allowBackorder !== undefined && input.allowBackorder !== variant.allowBackorder)
+      ) {
+        // reservations were made under the old policy; release/commit would skip or over-take them
+        const [held] = await manager.query<{ reserved: string }[]>(
+          "SELECT COALESCE(SUM(reserved), 0)::bigint AS reserved FROM inventory_levels WHERE variant_id = $1",
+          [variant.id],
+        );
+        if (Number(held?.reserved ?? 0) > 0) {
+          throw AppException.conflict("INVENTORY_POLICY_LOCKED", "Stock is reserved for this variant; change the inventory policy after those orders are settled");
+        }
+      }
       if (input.trackInventory !== undefined && input.trackInventory !== variant.trackInventory) {
         diff.trackInventory = { old: variant.trackInventory, new: input.trackInventory };
         set.trackInventory = input.trackInventory;
@@ -994,6 +1007,13 @@ export class ProductsService {
             await optionValueRepo.save(value);
           }
         }
+      }
+
+      // a live product must keep at least one sellable variant even when force removes option values
+      const productRow = product;
+      const survivors = variants.filter((v) => v.isActive && !affected.some((a) => a.id === v.id));
+      if (productRow?.status === "active" && survivors.length === 0) {
+        throw AppException.conflict("LAST_ACTIVE_VARIANT", "This change would leave a published product without active variants; archive it first");
       }
 
       // 3. Fix variants: strip removed ids everywhere; deactivate the active ones (only reachable with force).

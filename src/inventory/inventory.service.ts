@@ -379,6 +379,17 @@ export class InventoryService {
       .map(([variantId, quantity]) => ({ variantId, quantity }));
   }
 
+  /** Variants that can be bought: active variant of a live, published product (same rule as the storefront). */
+  private async sellableVariantIds(variantIds: string[]): Promise<Set<string>> {
+    if (variantIds.length === 0) return new Set();
+    const rows = await this.variantRepository.manager.query<{ id: string }[]>(
+      `SELECT v.id FROM variants v JOIN products p ON p.id = v.product_id
+       WHERE v.id = ANY($1::uuid[]) AND v.is_active = true AND p.status = 'active' AND p.deleted_at IS NULL`,
+      [variantIds],
+    );
+    return new Set(rows.map((r) => r.id));
+  }
+
   /** Variants whose stock is not tracked or that allow backorder are never reserved/released/committed. */
   private async trackedItems(
     items: { variantId: string; quantity: number }[],
@@ -411,7 +422,14 @@ export class InventoryService {
   }
 
   async reserve(items: { variantId: string; quantity: number }[], manager: EntityManager): Promise<void> {
-    const tracked = await this.trackedItems(this.normalizeItems(items), manager);
+    const normalized = this.normalizeItems(items);
+    // only sellable variants can be newly reserved (release/commit must keep working for older reservations)
+    const sellable = await this.sellableVariantIds(normalized.map((i) => i.variantId));
+    const unsellable = normalized.filter((i) => !sellable.has(i.variantId)).map((i) => i.variantId);
+    if (unsellable.length > 0) {
+      throw AppException.conflict("VARIANT_UNAVAILABLE", "Some variants are no longer available", { variantIds: unsellable });
+    }
+    const tracked = await this.trackedItems(normalized, manager);
     const short: { variantId: string; requested: number; available: number }[] = [];
     const now = this.clock.now();
 
@@ -529,19 +547,20 @@ export class InventoryService {
     if (variantIds.length === 0) return result;
 
     const variants = await this.variantRepository.find({ where: { id: In(variantIds) } });
-    const policy = new Map(variants.map((v) => [v.id, !v.trackInventory || v.allowBackorder]));
+    const sellable = await this.sellableVariantIds(variantIds);
+    const policy = new Map(variants.map((v) => [v.id, sellable.has(v.id) && (!v.trackInventory || v.allowBackorder)]));
 
     const rows = await this.inventoryLevelRepository.manager.query<{ variant_id: string; available: number }[]>(
-      `SELECT il.variant_id, COALESCE(SUM(il.on_hand - il.reserved), 0)::int AS available
+      `SELECT il.variant_id, COALESCE(SUM(il.on_hand - il.reserved), 0)::bigint AS available
        FROM inventory_levels il JOIN locations l ON l.id = il.location_id AND l.is_active = true
        WHERE il.variant_id = ANY($1::uuid[])
        GROUP BY il.variant_id`,
       [variantIds],
     );
-    const sums = new Map(rows.map((r) => [r.variant_id, Math.max(0, r.available)]));
+    const sums = new Map(rows.map((r) => [r.variant_id, Math.max(0, Number(r.available))]));
 
     for (const id of variantIds) {
-      result.set(id, { available: sums.get(id) ?? 0, unlimited: policy.get(id) === true });
+      result.set(id, { available: sellable.has(id) ? (sums.get(id) ?? 0) : 0, unlimited: policy.get(id) === true });
     }
     return result;
   }

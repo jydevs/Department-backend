@@ -317,7 +317,7 @@ export class StorefrontService {
     if (q.q) {
       const ph = params.push(`%${escapeLike(q.q)}%`);
       where.push(
-        `(p.title ILIKE ${ph} OR p.handle ILIKE ${ph} OR EXISTS (SELECT 1 FROM variants sv WHERE sv.product_id = p.id AND sv.sku ILIKE ${ph}))`,
+        `(p.title ILIKE ${ph} OR p.handle ILIKE ${ph} OR EXISTS (SELECT 1 FROM variants sv WHERE sv.product_id = p.id AND sv.is_active = true AND sv.sku ILIKE ${ph}))`,
       );
     }
 

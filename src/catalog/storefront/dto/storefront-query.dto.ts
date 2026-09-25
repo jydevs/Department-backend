@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const storefrontProductsQuerySchema = z.object({
   limit: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(1).max(100).default(24)),
-  cursor: z.string().max(512).optional(),
+  cursor: z.string().max(1024).optional(),
   sort: z.enum(["newest", "price_asc", "price_desc", "title"]).default("newest"),
   collection: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
   tag: z.string().min(1).max(255).optional(),
