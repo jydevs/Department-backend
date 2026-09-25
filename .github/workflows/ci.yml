@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -23,7 +23,15 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
+      # the API, the migrations and the customers smoke (reads the e-mail outbox) all use this database
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/department
+      OWNER_EMAIL: owner@ci.test
+      OWNER_PASSWORD: ci-Correct-Horse-Battery-9
+      # the smoke pays orders through the mock provider; never enabled in production (env.ts enforces it)
+      MOCK_PAYMENTS_ENABLED: "true"
+      PAYMENT_PROVIDER: mock
+      MAIL_TRANSPORT: log
+      API_URL: http://localhost:4000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,12 +44,13 @@ jobs:
       - run: yarn build
       - name: Apply migrations
         run: yarn migration:run:prod
-      - name: Boot API and run smoke checks
-        env:
-          OWNER_EMAIL: owner@ci.test
-          OWNER_PASSWORD: ci-Correct-Horse-Battery-9
+      - name: Create the smoke-test owner
+        run: yarn owner:create
+      - name: Boot API
         run: |
-          yarn owner:create
           node dist/main.js > api.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf localhost:4000/health && break; sleep 1; done
-          yarn smoke || (cat api.log; exit 1)
+          for i in $(seq 1 30); do curl -sf localhost:4000/health && exit 0; sleep 1; done
+          cat api.log
+          exit 1
+      - name: Full smoke (identity, catalog, CMS, commerce, customers)
+        run: yarn smoke || (cat api.log; exit 1)

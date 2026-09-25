@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.github
+.data
+uploads
+.env
+.env.*
+!.env.example
+*.log
+docs
+DOCUMENTOS
+Dockerfile
+docker-compose.yml
+.dockerignore
+npm-debug.log*
+yarn-error.log
