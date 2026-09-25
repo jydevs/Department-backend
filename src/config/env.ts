@@ -1,0 +1,138 @@
+import { z } from "zod";
+
+const csv = (fallback: string) =>
+  z
+    .string()
+    .default(fallback)
+    .transform((v) =>
+      v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+
+/** Express `trust proxy`: a hop count ("1", "2"…), a CIDR/IP list, or "false". Never a blanket "true". */
+const trustProxy = z
+  .string()
+  .default("false")
+  .transform((v): false | number | string => {
+    if (v === "false" || v === "0") return false;
+    if (/^\d+$/.test(v)) return Number(v);
+    return v;
+  })
+  .refine((v) => v !== ("true" as unknown), "TRUST_PROXY=true would trust every client-supplied X-Forwarded-For; use a hop count or an IP/CIDR list");
+
+const secret = (min: number) => z.string().min(min).optional();
+
+/**
+ * Every environment variable the API reads. Validated once at boot: a missing or
+ * malformed value stops the process with a readable list instead of failing later.
+ * Secrets are optional in development and REQUIRED in production (see superRefine).
+ */
+const schema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+    LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+
+    /** postgres://user:pass@host:5432/db  — TLS is configured with DATABASE_SSL, never with ?sslmode= */
+    DATABASE_URL: z
+      .string()
+      .min(1, "DATABASE_URL is required")
+      .refine((v) => !/sslmode=/i.test(v), "Remove ?sslmode= from DATABASE_URL and use DATABASE_SSL instead"),
+    /** disable = plain TCP (local) · require = encrypted, cert not verified · verify-full = verified chain + hostname */
+    DATABASE_SSL: z.enum(["disable", "require", "verify-full"]).default("disable"),
+    /** PEM of the CA (only for verify-full when the host isn't signed by a system CA, e.g. Supabase) */
+    DATABASE_CA_CERT: z.string().optional(),
+    DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+
+    /** comma separated list of allowed browser origins (storefront + admin) */
+    CORS_ORIGINS: csv("http://localhost:3000,http://localhost:3001"),
+    PUBLIC_URL: z.string().url().default("http://localhost:4000"),
+    STOREFRONT_URL: z.string().url().default("http://localhost:3000"),
+    ADMIN_URL: z.string().url().default("http://localhost:3001"),
+
+    /** number of trusted proxy hops (Railway = 1, Cloudflare + Railway = 2) or an IP/CIDR list */
+    TRUST_PROXY: trustProxy,
+    /** Swagger UI + /docs-json. On by default outside production. */
+    DOCS_ENABLED: z.enum(["true", "false", "1", "0"]).optional(),
+
+    THROTTLE_TTL_MS: z.coerce.number().int().min(1000).default(60_000),
+    THROTTLE_LIMIT: z.coerce.number().int().min(1).default(120),
+
+    /** injected by CI / deploy, shown by /version */
+    GIT_SHA: z.string().optional(),
+
+    /* ── secrets used by later phases: optional in dev, required in production ── */
+    JWT_ACCESS_SECRET: secret(32),
+    JWT_REFRESH_SECRET: secret(32),
+    /** base64 of 32 random bytes: encrypts stored third-party secrets (payment keys…) */
+    ENCRYPTION_KEY: z.string().optional(),
+    PREVIEW_TOKEN_SECRET: secret(32),
+    /** shared with the storefront: signs the cache-revalidation webhook */
+    STOREFRONT_REVALIDATE_SECRET: secret(32),
+    /** the Next.js SERVER presents this so the API can rate-limit the real visitor IP, not the Next host */
+    STOREFRONT_SERVER_KEY: secret(32),
+    WOMPI_EVENTS_SECRET: z.string().optional(),
+  })
+  .superRefine((env, ctx) => {
+    const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
+
+    // every CORS entry must be a bare origin (scheme://host[:port])
+    for (const origin of env.CORS_ORIGINS) {
+      try {
+        if (new URL(origin).origin !== origin) issue("CORS_ORIGINS", `"${origin}" must be an origin without path or trailing slash`);
+      } catch {
+        issue("CORS_ORIGINS", `"${origin}" is not a valid origin`);
+      }
+    }
+
+    if (env.ENCRYPTION_KEY !== undefined && Buffer.from(env.ENCRYPTION_KEY, "base64").length !== 32) {
+      issue("ENCRYPTION_KEY", "must be base64 of exactly 32 bytes (openssl rand -base64 32)");
+    }
+
+    if (env.NODE_ENV !== "production") return;
+
+    // production must never boot with development settings
+    for (const key of ["PUBLIC_URL", "STOREFRONT_URL", "ADMIN_URL"] as const) {
+      if (!env[key].startsWith("https://")) issue(key, "must be an https:// URL in production");
+    }
+    for (const origin of env.CORS_ORIGINS) {
+      if (!origin.startsWith("https://")) issue("CORS_ORIGINS", `"${origin}" must be https:// in production`);
+    }
+    if (env.DATABASE_SSL === "disable") issue("DATABASE_SSL", "must be require or verify-full in production");
+    if (env.TRUST_PROXY === false) issue("TRUST_PROXY", "must be set in production (proxy hop count), otherwise req.ip is the proxy's");
+    for (const key of [
+      "JWT_ACCESS_SECRET",
+      "JWT_REFRESH_SECRET",
+      "ENCRYPTION_KEY",
+      "PREVIEW_TOKEN_SECRET",
+      "STOREFRONT_REVALIDATE_SECRET",
+      "STOREFRONT_SERVER_KEY",
+    ] as const) {
+      if (!env[key]) issue(key, "is required in production");
+    }
+  });
+
+export type Env = Omit<z.infer<typeof schema>, "DOCS_ENABLED"> & { DOCS_ENABLED: boolean };
+
+export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  const parsed = schema.safeParse(source);
+  if (!parsed.success) {
+    const lines = parsed.error.issues.map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`);
+    throw new Error(`Invalid environment configuration:\n${lines.join("\n")}`);
+  }
+  const data = parsed.data;
+  const docs =
+    data.DOCS_ENABLED === undefined ? data.NODE_ENV !== "production" : data.DOCS_ENABLED === "true" || data.DOCS_ENABLED === "1";
+  return { ...data, DOCS_ENABLED: docs };
+}
+
+/** Load `.env` into process.env. A missing file is fine; any other failure is real and must surface. */
+export function loadDotEnv(): void {
+  try {
+    process.loadEnvFile();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+}
