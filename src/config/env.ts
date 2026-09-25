@@ -77,6 +77,19 @@ const schema = z
     /** the Next.js SERVER presents this so the API can rate-limit the real visitor IP, not the Next host */
     STOREFRONT_SERVER_KEY: secret(32),
     WOMPI_EVENTS_SECRET: z.string().optional(),
+    WOMPI_PUBLIC_KEY: z.string().optional(),
+    WOMPI_INTEGRITY_SECRET: z.string().optional(),
+    WOMPI_API_URL: z.string().url().default("https://sandbox.wompi.co/v1"),
+    /** `mock` never talks to a payment gateway (dev/test only); production must use `wompi` */
+    PAYMENT_PROVIDER: z.enum(["mock", "wompi"]).default("mock"),
+    /** the mock payment provider can approve orders without paying: must be turned on explicitly, never in production */
+    MOCK_PAYMENTS_ENABLED: z
+      .enum(["true", "false", "1", "0"])
+      .default("false")
+      .transform((v) => v === "true" || v === "1"),
+
+    /** how long an unpaid order keeps its stock reserved */
+    ORDER_RESERVATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 
     /* ── bootstrap: owner creation ── */
     OWNER_EMAIL: z.string().email().optional(),
@@ -106,6 +119,11 @@ const schema = z
     }
     for (const origin of env.CORS_ORIGINS) {
       if (!origin.startsWith("https://")) issue("CORS_ORIGINS", `"${origin}" must be https:// in production`);
+    }
+    if (env.MOCK_PAYMENTS_ENABLED) issue("MOCK_PAYMENTS_ENABLED", "must be false in production");
+    if (env.PAYMENT_PROVIDER !== "wompi") issue("PAYMENT_PROVIDER", "must be wompi in production");
+    for (const key of ["WOMPI_PUBLIC_KEY", "WOMPI_INTEGRITY_SECRET", "WOMPI_EVENTS_SECRET"] as const) {
+      if (!env[key]) issue(key, "is required in production");
     }
     if (env.DATABASE_SSL === "disable") issue("DATABASE_SSL", "must be require or verify-full in production");
     if (env.TRUST_PROXY === false) issue("TRUST_PROXY", "must be set in production (proxy hop count), otherwise req.ip is the proxy's");

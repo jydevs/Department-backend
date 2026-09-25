@@ -19,7 +19,13 @@ export const PERMISSIONS = [
   "content:write",
   "content:publish",
   "media:write",
+  "discounts:read",
   "discounts:write",
+  "shipping:read",
+  "shipping:write",
+  "settings:read",
+  "marketing:read",
+  "marketing:write",
   "analytics:read",
 ] as const;
 
@@ -41,8 +47,8 @@ export const ROLE_DEFAULTS: Record<RoleKey, Permission[]> = {
     "collections:write",
     "inventory:read",
   ],
-  fulfillment: ["orders:read", "orders:write", "inventory:read", "inventory:write"],
-  support: ["orders:read", "customers:read"],
+  fulfillment: ["orders:read", "orders:write", "inventory:read", "inventory:write", "shipping:read"],
+  support: ["orders:read", "customers:read", "marketing:read"],
   analyst: [
     "staff:read",
     "roles:read",
@@ -54,5 +60,8 @@ export const ROLE_DEFAULTS: Record<RoleKey, Permission[]> = {
     "customers:read",
     "content:read",
     "analytics:read",
+    "discounts:read",
+    "shipping:read",
+    "marketing:read",
   ],
 };
