@@ -46,6 +46,13 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
   let cookie;
 
   try {
+    if (buyerEmail) {
+      await check("mail: paid / cancelled / refunded orders queued their transactional e-mails", async () => {
+        const rows = (await db.query("SELECT DISTINCT template FROM email_outbox WHERE \"to\" = $1", [buyerEmail])).rows.map((r) => r.template);
+        for (const t of ["order_confirmation", "order_cancelled", "refund_issued"]) assert(rows.includes(t), `missing ${t} (have ${rows.join(",")})`);
+      });
+    }
+
     await check("customers: register never reveals whether the e-mail exists (202 both times)", async () => {
       const body = { email, password: password1, firstName: "Smoke", lastName: "Buyer", acceptsMarketing: false };
       const a = await call("POST", "/storefront/customers/register", body);
