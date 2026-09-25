@@ -1,0 +1,9 @@
+export { Product } from "./product.entity";
+export { ProductOption } from "./product-option.entity";
+export { ProductOptionValue } from "./product-option-value.entity";
+export { Variant } from "./variant.entity";
+export { Media } from "./media.entity";
+export { ProductMedia } from "./product-media.entity";
+export { Collection } from "./collection.entity";
+export { CollectionProduct } from "./collection-product.entity";
+export { Metafield } from "./metafield.entity";

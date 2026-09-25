@@ -69,7 +69,9 @@ await check("CORS: allowed origin echoed, foreign origin not", async () => {
 });
 
 import { identityChecks } from "./smoke-identity.mjs";
-await identityChecks({ base, check, assert });
+import { catalogChecks } from "./smoke-catalog.mjs";
+const tokens = await identityChecks({ base, check, assert });
+await catalogChecks({ base, check, assert, ...tokens });
 
 console.log(failed ? `\n${failed} check(s) failed` : "\nAll smoke checks passed");
 process.exit(failed ? 1 : 0);
