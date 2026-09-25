@@ -1,9 +1,13 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { EntityManager } from "typeorm";
 import { AuditService } from "../../audit/audit.service";
 import type { Actor } from "../../common/auth/actor";
 import { Clock } from "../../common/clock/clock";
 import { AppException } from "../../common/errors/app-exception";
+import { ENV } from "../../config/config.module";
+import type { Env } from "../../config/env";
+import { MailService } from "../../mail/mail.service";
+import { formatCop, itemsSummary, orderCustomerName, orderNumberLabel, orderUrl } from "./order-mail";
 import { TransactionService } from "../../database/transaction.service";
 import { InventoryService } from "../../inventory/inventory.service";
 import { Discount, DiscountRedemption, Order, OrderEvent, OrderLine, Payment } from "../entities";
@@ -42,6 +46,8 @@ export class OrdersLifecycleService {
     private readonly audit: AuditService,
     private readonly clock: Clock,
     private readonly transactions: TransactionService,
+    private readonly mail: MailService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   /** pending -> open, paymentStatus paid, reservation committed to on_hand. */
@@ -83,6 +89,20 @@ export class OrdersLifecycleService {
       actor,
     );
     await this.auditIfStaff(manager, actor, "order:mark-paid", orderId, { manual: payment.manual === true });
+    await this.mail.enqueue(
+      {
+        to: order.email,
+        template: "order_confirmation",
+        data: {
+          customerName: orderCustomerName(order.shippingAddress),
+          orderNumber: orderNumberLabel(order.orderNumber),
+          total: formatCop(order.total),
+          itemsSummary: itemsSummary(lines),
+          orderUrl: orderUrl(this.env.STOREFRONT_URL, order.orderNumber),
+        },
+      },
+      manager,
+    );
   }
 
   /**
@@ -120,6 +140,7 @@ export class OrdersLifecycleService {
       throw AppException.conflict("INVALID_ORDER_STATE", `An order with status ${order.status} cannot be cancelled`);
     }
 
+    const wasPending = order.status === "pending";
     const wasPaid = order.paymentStatus === "paid" || order.paymentStatus === "partially_refunded";
     order.status = "cancelled";
     order.cancelledAt = now;
@@ -132,6 +153,22 @@ export class OrdersLifecycleService {
       await this.flagRefundPending(orderId, "order.refund_pending", { reason: "cancelled_after_payment", outstanding: order.total - order.totalRefunded }, manager, opts.actor);
     }
     await this.auditIfStaff(manager, opts.actor, "order:cancel", orderId, { reason: opts.reason, restock: opts.restock });
+    // Paid orders, or pending ones (checkout always creates a payment intent). Automatic expiry is another path and sends nothing.
+    if (wasPaid || wasPending) {
+      await this.mail.enqueue(
+        {
+          to: order.email,
+          template: "order_cancelled",
+          data: {
+            customerName: orderCustomerName(order.shippingAddress),
+            orderNumber: orderNumberLabel(order.orderNumber),
+            reason: opts.reason,
+            orderUrl: orderUrl(this.env.STOREFRONT_URL, order.orderNumber),
+          },
+        },
+        manager,
+      );
+    }
   }
 
   /**

@@ -1,7 +1,11 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { EntityManager } from "typeorm";
 import { AppException } from "../../common/errors/app-exception";
 import { Clock } from "../../common/clock/clock";
+import { ENV } from "../../config/config.module";
+import type { Env } from "../../config/env";
+import { MailService } from "../../mail/mail.service";
+import { loadOrderMailContext, orderNumberLabel, orderUrl } from "./order-mail";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
 import { Fulfillment } from "../entities/fulfillment.entity";
@@ -26,6 +30,8 @@ export class FulfillmentsService {
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
     private readonly clock: Clock,
+    private readonly mail: MailService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   async create(orderId: string, input: FulfillmentCreateInput, actor: EventActor): Promise<FulfillmentResultDto> {
@@ -103,6 +109,27 @@ export class FulfillmentsService {
         },
         manager,
       );
+
+      if (input.notifyCustomer) {
+        const ctx = await loadOrderMailContext(manager, orderId);
+        if (ctx) {
+          await this.mail.enqueue(
+            {
+              to: ctx.email,
+              template: "order_shipped",
+              data: {
+                customerName: ctx.customerName,
+                orderNumber: orderNumberLabel(ctx.orderNumber),
+                carrier: input.carrier ?? "",
+                trackingNumber: input.trackingNumber ?? "",
+                trackingUrl: input.trackingUrl ?? "",
+                orderUrl: orderUrl(this.env.STOREFRONT_URL, ctx.orderNumber),
+              },
+            },
+            manager,
+          );
+        }
+      }
 
       return { fulfillment: toFulfillmentDto(fulfillment, savedLines), order: result };
     });

@@ -174,4 +174,5 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
       assert(d.status === 403, `analyst discount → ${d.status}`);
     }
   });
+  return { buyerEmail: `buyer-${stamp}@dept.test`, orderNumber: order?.orderNumber };
 }

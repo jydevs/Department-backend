@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { DatabaseModule } from "../../database/database.module";
 import { InventoryModule } from "../../inventory/inventory.module";
+import { MailModule } from "../../mail/mail.module";
 import { Order } from "../entities/order.entity";
 import { OrderLine } from "../entities/order-line.entity";
 import { OrderEvent } from "../entities/order-event.entity";
@@ -21,6 +22,7 @@ import { RefundsService } from "./refunds.service";
     TypeOrmModule.forFeature([Order, OrderLine, OrderEvent, Payment, Fulfillment, FulfillmentLine, Refund, RefundLine]),
     DatabaseModule,
     InventoryModule,
+    MailModule,
     OrdersLifecycleModule,
   ],
   controllers: [OrdersAdminController],

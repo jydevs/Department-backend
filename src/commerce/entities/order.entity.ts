@@ -17,6 +17,8 @@ import type { Refund } from "./refund.entity";
 @Index(["status", "createdAt"])
 @Index(["email"])
 @Index(["paymentStatus"])
+@Index(["customerId"])
+@Index(["paidAt"])
 export class Order extends VersionedEntity {
   @Column({ type: "int", unique: true, default: () => "nextval('order_number_seq')" })
   orderNumber!: number;

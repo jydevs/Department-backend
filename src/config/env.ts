@@ -82,6 +82,13 @@ const schema = z
     WOMPI_API_URL: z.string().url().default("https://sandbox.wompi.co/v1"),
     /** `mock` never talks to a payment gateway (dev/test only); production must use `wompi` */
     PAYMENT_PROVIDER: z.enum(["mock", "wompi"]).default("mock"),
+    /** e-mail: `log` records messages in the outbox only (dev/test); production must use `smtp` */
+    MAIL_TRANSPORT: z.enum(["log", "smtp"]).default("log"),
+    SMTP_URL: z.string().optional(),
+    MAIL_FROM: z.string().default("Daregular Dept. <no-reply@daregulardept.com>"),
+    /** customer JWT (separate from the staff one) */
+    CUSTOMER_JWT_SECRET: secret(32),
+
     /** the mock payment provider can approve orders without paying: must be turned on explicitly, never in production */
     MOCK_PAYMENTS_ENABLED: z
       .enum(["true", "false", "1", "0"])
@@ -121,6 +128,9 @@ const schema = z
       if (!origin.startsWith("https://")) issue("CORS_ORIGINS", `"${origin}" must be https:// in production`);
     }
     if (env.MOCK_PAYMENTS_ENABLED) issue("MOCK_PAYMENTS_ENABLED", "must be false in production");
+    if (env.MAIL_TRANSPORT !== "smtp") issue("MAIL_TRANSPORT", "must be smtp in production");
+    if (!env.SMTP_URL) issue("SMTP_URL", "is required in production");
+    if (!env.CUSTOMER_JWT_SECRET) issue("CUSTOMER_JWT_SECRET", "is required in production");
     if (env.PAYMENT_PROVIDER !== "wompi") issue("PAYMENT_PROVIDER", "must be wompi in production");
     for (const key of ["WOMPI_PUBLIC_KEY", "WOMPI_INTEGRITY_SECRET", "WOMPI_EVENTS_SECRET"] as const) {
       if (!env[key]) issue(key, "is required in production");

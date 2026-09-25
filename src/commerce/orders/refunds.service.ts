@@ -1,6 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { AppException } from "../../common/errors/app-exception";
 import { Clock } from "../../common/clock/clock";
+import { ENV } from "../../config/config.module";
+import type { Env } from "../../config/env";
+import { MailService } from "../../mail/mail.service";
+import { formatCop, loadOrderMailContext, orderNumberLabel, orderUrl } from "./order-mail";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
 import { InventoryService } from "../../inventory/inventory.service";
@@ -18,6 +22,8 @@ export class RefundsService {
     private readonly auditService: AuditService,
     private readonly inventory: InventoryService,
     private readonly clock: Clock,
+    private readonly mail: MailService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   async create(orderId: string, input: RefundCreateInput, actor: EventActor): Promise<RefundResultDto> {
@@ -136,6 +142,23 @@ export class RefundsService {
         },
         manager,
       );
+
+      const ctx = await loadOrderMailContext(manager, orderId);
+      if (ctx) {
+        await this.mail.enqueue(
+          {
+            to: ctx.email,
+            template: "refund_issued",
+            data: {
+              customerName: ctx.customerName,
+              orderNumber: orderNumberLabel(ctx.orderNumber),
+              amount: formatCop(input.amount),
+              orderUrl: orderUrl(this.env.STOREFRONT_URL, ctx.orderNumber),
+            },
+          },
+          manager,
+        );
+      }
 
       return { refund: toRefundDto(refund, savedLines), order: { paymentStatus, totalRefunded: newTotalRefunded } };
     });
