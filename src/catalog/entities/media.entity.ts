@@ -1,7 +1,8 @@
-import { Column, Entity } from "typeorm";
+import { Column, Entity, Index } from "typeorm";
 import { AppBaseEntity } from "../../database/base.entity";
 
 @Entity("media")
+@Index(["sha256"])
 export class Media extends AppBaseEntity {
   @Column({ type: "text" })
   url!: string;
@@ -17,4 +18,20 @@ export class Media extends AppBaseEntity {
 
   @Column({ type: "varchar", length: 100, nullable: true })
   mimeType?: string | null;
+
+  /** Key inside the storage driver (never derived from the client file name). Null for legacy URL-only media. */
+  @Column({ type: "varchar", length: 255, nullable: true })
+  storageKey?: string | null;
+
+  @Column({ type: "integer", nullable: true })
+  byteSize?: number | null;
+
+  @Column({ type: "varchar", length: 255, nullable: true })
+  originalName?: string | null;
+
+  @Column({ type: "char", length: 64, nullable: true })
+  sha256?: string | null;
+
+  @Column({ type: "uuid", nullable: true })
+  uploadedBy?: string | null;
 }

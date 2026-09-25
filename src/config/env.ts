@@ -63,6 +63,9 @@ const schema = z
     /** injected by CI / deploy, shown by /version */
     GIT_SHA: z.string().optional(),
 
+    /** where uploaded media is stored by the local-disk driver */
+    UPLOAD_DIR: z.string().default("./uploads"),
+
     /* ── secrets used by later phases: optional in dev, required in production ── */
     JWT_ACCESS_SECRET: secret(32),
     JWT_REFRESH_SECRET: secret(32),
