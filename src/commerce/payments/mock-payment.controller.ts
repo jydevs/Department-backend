@@ -26,7 +26,7 @@ export class MockPaymentController {
   @HttpCode(200)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async simulate(@Body() body: MockPaymentDto): Promise<MockPaymentResultDto> {
-    if (this.env.NODE_ENV === "production" || this.env.PAYMENT_PROVIDER !== "mock") throw AppException.notFound("Resource");
+    if (this.env.NODE_ENV === "production" || this.env.MOCK_PAYMENTS_ENABLED !== true || this.env.PAYMENT_PROVIDER !== "mock") throw AppException.notFound("Resource");
 
     const order = await this.orders.findOne({ where: { paymentReference: body.reference } });
     if (!order) throw AppException.notFound("Order");

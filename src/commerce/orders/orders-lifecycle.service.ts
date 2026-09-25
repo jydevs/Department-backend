@@ -53,7 +53,8 @@ export class OrdersLifecycleService {
     const now = this.clock.now();
 
     const lines = await manager.getRepository(OrderLine).find({ where: { orderId } });
-    await this.inventory.commit(this.stockItems(lines), manager);
+    // Commit what was actually reserved at checkout, regardless of the variants' CURRENT trackInventory/allowBackorder.
+    await this.inventory.commitReserved(this.reservedItems(lines), manager);
 
     const paymentRepo = manager.getRepository(Payment);
     const existing = await paymentRepo.findOne({
@@ -94,13 +95,27 @@ export class OrdersLifecycleService {
     const now = this.clock.now();
 
     if (order.status === "pending") {
-      await this.inventory.release(this.stockItems(lines), manager);
+      await this.inventory.releaseReserved(this.reservedItems(lines), manager);
       await this.releaseDiscount(manager, orderId);
     } else if (order.status === "open") {
       if (lines.some((l) => l.fulfilledQuantity > 0)) {
         throw AppException.conflict("ORDER_HAS_FULFILLMENTS", "The order already has shipments and cannot be cancelled");
       }
-      if (opts.restock) await this.inventory.restock(this.stockItems(lines), manager, "correction");
+      if (opts.restock) {
+        // Units already put back by refunds with restock must not be restocked again.
+        const restocked = await manager.query<{ order_line_id: string; qty: number }[]>(
+          `SELECT rl.order_line_id, COALESCE(SUM(rl.quantity), 0)::int AS qty
+           FROM refund_lines rl JOIN refunds r ON r.id = rl.refund_id
+           WHERE r.order_id = $1 AND r.restocked = true
+           GROUP BY rl.order_line_id`,
+          [orderId],
+        );
+        const already = new Map(restocked.map((r) => [r.order_line_id, r.qty]));
+        const items = lines
+          .map((l) => ({ variantId: l.variantId, quantity: l.quantity - (already.get(l.id) ?? 0) }))
+          .filter((i) => i.quantity > 0);
+        if (items.length > 0) await this.inventory.restock(items, manager, "correction");
+      }
     } else {
       throw AppException.conflict("INVALID_ORDER_STATE", `An order with status ${order.status} cannot be cancelled`);
     }
@@ -160,7 +175,7 @@ export class OrdersLifecycleService {
           if (locked.length === 0) return false; // paid, cancelled or taken by another instance meanwhile
           const order = await this.lockOrder(manager, id);
           const lines = await manager.getRepository(OrderLine).find({ where: { orderId: id } });
-          await this.inventory.release(this.stockItems(lines), manager);
+          await this.inventory.releaseReserved(this.reservedItems(lines), manager);
           await this.releaseDiscount(manager, id);
           order.status = "expired";
           order.reservedUntil = null;
@@ -200,6 +215,11 @@ export class OrdersLifecycleService {
 
   private stockItems(lines: OrderLine[]): { variantId: string; quantity: number }[] {
     return lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity }));
+  }
+
+  /** Quantities that checkout really reserved (untracked / backorderable lines have 0 and are skipped). */
+  private reservedItems(lines: OrderLine[]): { variantId: string; quantity: number }[] {
+    return lines.filter((l) => l.reservedQuantity > 0).map((l) => ({ variantId: l.variantId, quantity: l.reservedQuantity }));
   }
 
   /** An order that never got paid gives its discount usage back (so usageLimit / oncePerEmail are not burned by abandoned carts). */

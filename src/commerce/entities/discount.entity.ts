@@ -3,6 +3,7 @@ import { AppBaseEntity } from "../../database/base.entity";
 import { moneyTransformer } from "../../common/money/money";
 
 @Check("chk_discounts_used_count_nonneg", "\"used_count\" >= 0")
+@Check("chk_discounts_type", "\"type\" IN ('percent','fixed','free_shipping')")
 @Entity("discounts")
 export class Discount extends AppBaseEntity {
   /** Stored UPPERCASE. */

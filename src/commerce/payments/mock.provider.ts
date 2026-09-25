@@ -42,7 +42,7 @@ export class MockProvider implements PaymentProvider {
   }
 
   verifyWebhook(headers: WebhookHeaders, rawBody: Buffer): VerifiedEvent | null {
-    if (this.env.NODE_ENV === "production") return null;
+    if (!this.isEnabled()) return null;
     const presented = headers[MOCK_SIGNATURE_HEADER];
     if (typeof presented !== "string") return null;
     if (!safeEqual(this.sign(rawBody), presented.toLowerCase())) return null;
@@ -88,7 +88,12 @@ export class MockProvider implements PaymentProvider {
     return createHmac("sha256", this.env.WOMPI_EVENTS_SECRET ?? DEV_SECRET).update(rawBody).digest("hex");
   }
 
+  /** The mock only works outside production AND with the explicit MOCK_PAYMENTS_ENABLED opt-in. */
+  isEnabled(): boolean {
+    return this.env.NODE_ENV !== "production" && this.env.MOCK_PAYMENTS_ENABLED === true;
+  }
+
   private assertNotProduction(): void {
-    if (this.env.NODE_ENV === "production") throw AppException.unavailable("The mock payment provider is disabled in production");
+    if (!this.isEnabled()) throw AppException.unavailable("The mock payment provider is disabled");
   }
 }

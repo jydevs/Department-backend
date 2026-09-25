@@ -15,20 +15,12 @@ import { InventoryLevelDto, InventoryAdjustmentDto } from "./dto/inventory-level
 import { LocationDto } from "./dto/location.dto";
 import { z } from "zod";
 import { escapeLike } from "../common/sql/escape-like";
+import { affectedCount } from "../common/sql/query-result";
 
 /** Number reported by `availableFor` for variants that never run out (untracked or backorderable). */
 export const UNLIMITED_AVAILABILITY = 1_000_000_000;
 const MAX_ON_HAND = 1_000_000_000;
 const LOW_STOCK_DEFAULT = 5;
-
-/**
- * `manager.query("UPDATE ... RETURNING id")` resolves to `[rows, affectedCount]` on the pg driver (not to the rows),
- * so `res.length` is always 2. This returns the number of rows the statement actually touched.
- */
-function updatedRows(res: unknown): number {
-  if (Array.isArray(res) && res.length === 2 && Array.isArray(res[0])) return res[0].length;
-  return Array.isArray(res) ? res.length : 0;
-}
 
 @Injectable()
 export class InventoryService {
@@ -430,7 +422,11 @@ export class InventoryService {
     );
   }
 
-  async reserve(items: { variantId: string; quantity: number }[], manager: EntityManager): Promise<void> {
+  /** Reserves stock and returns what was ACTUALLY reserved (untracked / backorderable variants are skipped). */
+  async reserve(
+    items: { variantId: string; quantity: number }[],
+    manager: EntityManager,
+  ): Promise<{ variantId: string; quantity: number }[]> {
     const normalized = this.normalizeItems(items);
     // only sellable variants can be newly reserved (release/commit must keep working for older reservations)
     const sellable = await this.sellableVariantIds(normalized.map((i) => i.variantId));
@@ -456,7 +452,7 @@ export class InventoryService {
            WHERE id = $1 AND on_hand - reserved >= $2 RETURNING id`,
           [level.id, take, now],
         );
-        if (updatedRows(res) === 0) continue;
+        if (affectedCount(res) === 0) continue;
         remaining -= take;
         if (remaining === 0) break;
       }
@@ -466,10 +462,17 @@ export class InventoryService {
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_STOCK", "Not enough stock for some items", { items: short });
     }
+    return tracked;
   }
 
+  /** Releases using the CURRENT variant policy (legacy). Prefer `releaseReserved` for orders. */
   async release(items: { variantId: string; quantity: number }[], manager: EntityManager): Promise<void> {
-    const tracked = await this.trackedItems(this.normalizeItems(items), manager);
+    await this.releaseReserved(await this.trackedItems(this.normalizeItems(items), manager), manager);
+  }
+
+  /** Releases exactly the given quantities without looking at the variants' current policy flags. */
+  async releaseReserved(items: { variantId: string; quantity: number }[], manager: EntityManager): Promise<void> {
+    const tracked = items.length === 0 ? [] : this.normalizeItems(items);
     const short: { variantId: string; requested: number; reserved: number }[] = [];
     const now = this.clock.now();
 
@@ -489,7 +492,7 @@ export class InventoryService {
            WHERE id = $1 AND reserved >= $2 RETURNING id`,
           [level.id, take, now],
         );
-        if (updatedRows(res) === 0) throw AppException.conflict("INSUFFICIENT_RESERVED", "Reserved stock changed concurrently");
+        if (affectedCount(res) === 0) throw AppException.conflict("INSUFFICIENT_RESERVED", "Reserved stock changed concurrently");
         remaining -= take;
         if (remaining === 0) break;
       }
@@ -502,8 +505,14 @@ export class InventoryService {
     }
   }
 
+  /** Commits using the CURRENT variant policy (legacy). Prefer `commitReserved` for orders. */
   async commit(items: { variantId: string; quantity: number }[], manager: EntityManager): Promise<void> {
-    const tracked = await this.trackedItems(this.normalizeItems(items), manager);
+    await this.commitReserved(await this.trackedItems(this.normalizeItems(items), manager), manager);
+  }
+
+  /** Commits (on_hand and reserved decrease) exactly the given quantities without looking at current policy flags. */
+  async commitReserved(items: { variantId: string; quantity: number }[], manager: EntityManager): Promise<void> {
+    const tracked = items.length === 0 ? [] : this.normalizeItems(items);
     const short: { variantId: string; requested: number; reserved: number }[] = [];
     const adjRepo = manager.getRepository(InventoryAdjustment);
     const now = this.clock.now();
@@ -525,7 +534,7 @@ export class InventoryService {
            WHERE id = $1 AND reserved >= $2 RETURNING id`,
           [level.id, take, now],
         );
-        if (updatedRows(res) === 0) throw AppException.conflict("INSUFFICIENT_RESERVED", "Reserved stock changed concurrently");
+        if (affectedCount(res) === 0) throw AppException.conflict("INSUFFICIENT_RESERVED", "Reserved stock changed concurrently");
 
         const adjustment = new InventoryAdjustment();
         adjustment.variantId = item.variantId;

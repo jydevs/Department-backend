@@ -466,11 +466,19 @@ export class ProductsService {
         (input.allowBackorder !== undefined && input.allowBackorder !== variant.allowBackorder)
       ) {
         // reservations were made under the old policy; release/commit would skip or over-take them
+        // SUM cannot be combined with FOR UPDATE: lock the level rows in a subquery so concurrent reserves wait.
         const [held] = await manager.query<{ reserved: string }[]>(
-          "SELECT COALESCE(SUM(reserved), 0)::bigint AS reserved FROM inventory_levels WHERE variant_id = $1",
+          `SELECT COALESCE(SUM(t.reserved), 0)::bigint AS reserved
+           FROM (SELECT reserved FROM inventory_levels WHERE variant_id = $1 FOR UPDATE) t`,
           [variant.id],
         );
-        if (Number(held?.reserved ?? 0) > 0) {
+        // pending orders hold (or may hold) reservations of this variant even if the level sum is momentarily 0
+        const [pending] = await manager.query<{ n: number }[]>(
+          `SELECT count(*)::int AS n FROM order_lines ol JOIN orders o ON o.id = ol.order_id
+           WHERE o.status = 'pending' AND ol.variant_id = $1`,
+          [variant.id],
+        );
+        if (Number(held?.reserved ?? 0) > 0 || (pending?.n ?? 0) > 0) {
           throw AppException.conflict("INVENTORY_POLICY_LOCKED", "Stock is reserved for this variant; change the inventory policy after those orders are settled");
         }
       }

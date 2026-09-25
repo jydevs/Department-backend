@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { v7 as uuidv7 } from "uuid";
 import { Clock } from "../../common/clock/clock";
 import { AppException } from "../../common/errors/app-exception";
+import { rowsOf } from "../../common/sql/query-result";
 import { TransactionService } from "../../database/transaction.service";
 import { Order, Payment } from "../entities";
 import { OrdersLifecycleService } from "../orders/orders-lifecycle.service";
@@ -9,6 +10,7 @@ import { PAYMENT_PROVIDER, PaymentProvider, VerifiedEvent, WebhookHeaders } from
 
 export type PaymentEventOutcome =
   | "ignored"
+  | "stale"
   | "duplicate"
   | "unknown_reference"
   | "mismatch"
@@ -37,7 +39,26 @@ export class PaymentEventsService {
   async handleWebhook(headers: WebhookHeaders, rawBody: Buffer | undefined): Promise<PaymentEventOutcome> {
     const verified = rawBody && rawBody.length > 0 ? this.provider.verifyWebhook(headers, rawBody) : null;
     if (!verified) throw AppException.unauthorized("Invalid request");
+    if (this.isStale(verified.event.timestamp)) {
+      // Signed but outside the freshness window (replay protection): acknowledge with 200 and no effects.
+      this.logger.warn(`Ignoring stale payment webhook (timestamp ${String(verified.event.timestamp)})`);
+      return "stale";
+    }
     return this.process(verified);
+  }
+
+  /** Only when the event carries a timestamp (Wompi: unix seconds): older/newer than +-24h is stale. */
+  private isStale(timestamp: number | string | undefined): boolean {
+    if (timestamp === undefined) return false;
+    let ms: number;
+    if (typeof timestamp === "number" || /^\d+$/.test(timestamp)) {
+      const n = Number(timestamp);
+      ms = n > 1e12 ? n : n * 1000;
+    } else {
+      ms = Date.parse(timestamp);
+    }
+    if (!Number.isFinite(ms)) return true;
+    return Math.abs(this.clock.now().getTime() - ms) > 24 * 60 * 60 * 1000;
   }
 
   async process(verified: VerifiedEvent): Promise<PaymentEventOutcome> {
@@ -53,7 +74,7 @@ export class PaymentEventsService {
          RETURNING id`,
         [uuidv7(), verified.provider, parsed.eventId, now],
       );
-      if (inserted.length === 0) return "duplicate";
+      if (rowsOf(inserted).length === 0) return "duplicate";
 
       const order = await manager
         .getRepository(Order)
@@ -72,6 +93,15 @@ export class PaymentEventsService {
           expectedAmountInCents: order.total * 100,
           expectedCurrency: order.currency,
         });
+        if (parsed.status === "approved") {
+          // Money arrived but not for the expected amount/currency: never mark paid, an admin must refund it.
+          await this.lifecycle.flagRefundPending(
+            order.id,
+            "order.refund_pending",
+            { reason: "payment_mismatch", providerTransactionId: parsed.providerTransactionId, amountInCents: parsed.amountInCents },
+            manager,
+          );
+        }
         return "mismatch";
       }
 
@@ -101,6 +131,20 @@ export class PaymentEventsService {
           );
           return "late_approval";
         }
+        // Already paid: a second APPROVED with a different transaction id means the buyer paid twice.
+        if (payment?.providerTransactionId !== parsed.providerTransactionId) {
+          await this.lifecycle.flagRefundPending(
+            order.id,
+            "order.refund_pending",
+            {
+              reason: "duplicate_payment",
+              providerTransactionId: parsed.providerTransactionId,
+              paidProviderTransactionId: payment?.providerTransactionId ?? null,
+              amountInCents: parsed.amountInCents,
+            },
+            manager,
+          );
+        }
         return "already_paid";
       }
 
@@ -112,6 +156,17 @@ export class PaymentEventsService {
           payment.providerTransactionId = parsed.providerTransactionId;
           if (parsed.method) payment.method = parsed.method;
           await paymentRepo.save(payment);
+        }
+        if (parsed.status === "declined" || parsed.status === "error") {
+          // Decision: a DECLINED/ERROR transaction does NOT cancel the order. The buyer may retry the payment with the
+          // same reference in Wompi (new transaction, same reference), so the order stays pending and holds its
+          // reservation until it expires. Only VOIDED (the transaction was annulled) cancels.
+          await this.lifecycle.recordEvent(manager, order.id, "payment.declined", {
+            status: parsed.status,
+            providerTransactionId: parsed.providerTransactionId,
+            method: parsed.method ?? null,
+          });
+          return "no_change";
         }
         await this.lifecycle.cancel(order.id, { reason: `payment_${parsed.status}`, restock: false }, manager);
         await manager.query(`UPDATE orders SET payment_status = 'failed', version = version + 1, updated_at = $2 WHERE id = $1`, [order.id, now]);

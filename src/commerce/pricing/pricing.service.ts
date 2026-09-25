@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, EntityManager } from "typeorm";
 import { AppException } from "../../common/errors/app-exception";
@@ -52,6 +52,8 @@ const DEFAULT_TAX: { pricesIncludeTax: boolean; ratePercent: string } = { prices
 
 @Injectable()
 export class PricingService {
+  private readonly logger = new Logger(PricingService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly inventory: InventoryService,
@@ -167,7 +169,8 @@ export class PricingService {
       const freeOver = rate.free_over_subtotal === null ? null : Number(rate.free_over_subtotal);
       const freeByThreshold = freeOver !== null && discountedSubtotal >= freeOver;
       shippingTotal = freeByThreshold || freeShipping ? 0 : base;
-      waivedShipping = freeShipping ? base : 0;
+      // what the discount actually waived: nothing when the free-over threshold already made shipping free
+      waivedShipping = freeShipping && !freeByThreshold ? base : 0;
     }
 
     /* ── tax ── */
@@ -204,6 +207,11 @@ export class PricingService {
   }
 
   private invalid(reason: DiscountInvalidReason, extra?: Record<string, unknown>): AppException {
+    if (reason === "inactive" || reason === "not_started") {
+      // Public responses must not reveal that a code exists but is disabled / not live yet.
+      this.logger.log(`Discount rejected (${reason})`);
+      return new AppException(422, "DISCOUNT_INVALID", "The discount code cannot be applied", { reason: "not_found" });
+    }
     return new AppException(422, "DISCOUNT_INVALID", "The discount code cannot be applied", { reason, ...extra });
   }
 

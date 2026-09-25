@@ -7,6 +7,7 @@ import { InventoryService } from "../../inventory/inventory.service";
 import { Refund } from "../entities/refund.entity";
 import { RefundLine } from "../entities/refund-line.entity";
 import { RefundCreateInput, RefundResultDto } from "./dto/orders-admin.dto";
+import { REFUND_PENDING_TAG } from "./orders-lifecycle.service";
 import { toRefundDto } from "./order-mappers";
 import { EventActor, execUpdate, lockLines, lockOrder, recordOrderEvent } from "./order-support";
 
@@ -27,8 +28,10 @@ export class RefundsService {
 
     return this.transactionService.run(async (manager) => {
       const order = await lockOrder(manager, orderId);
-      if (order.status !== "open" && order.status !== "completed") {
-        throw AppException.conflict("ORDER_NOT_REFUNDABLE", "Only open or completed orders can be refunded");
+      // cancelled/expired orders can hold money (late approval, paid order cancelled): they must be refundable too
+      const refundableStatus = ["open", "completed", "cancelled", "expired"];
+      if (!refundableStatus.includes(order.status)) {
+        throw AppException.conflict("ORDER_NOT_REFUNDABLE", "Only open, completed, cancelled or expired orders can be refunded");
       }
       if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
         throw AppException.conflict("ORDER_NOT_PAID", "Only paid orders can be refunded");
@@ -83,6 +86,14 @@ export class RefundsService {
         [input.amount, paymentStatus, now, orderId],
       );
       if (affected !== 1) throw AppException.conflict("REFUND_EXCEEDS_PAID", "Refund amount exceeds the amount still refundable");
+
+      const untagged =
+        newTotalRefunded >= order.total
+          ? await execUpdate(manager, "UPDATE orders SET tags = array_remove(tags, $2) WHERE id = $1 AND $2 = ANY(tags)", [orderId, REFUND_PENDING_TAG])
+          : 0;
+      if (untagged > 0) {
+        await recordOrderEvent(manager, orderId, "order.refund_pending_cleared", { totalRefunded: newTotalRefunded }, actor);
+      }
 
       const refundRepo = manager.getRepository(Refund);
       const refund = await refundRepo.save(

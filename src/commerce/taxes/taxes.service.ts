@@ -4,6 +4,7 @@ import { DataSource } from "typeorm";
 import { v7 as uuidv7 } from "uuid";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
+import { firstRow } from "../../common/sql/query-result";
 import type { TaxSettingsDto, UpdateTaxInput } from "./taxes.dto";
 
 interface TaxRow {
@@ -55,7 +56,7 @@ export class TaxesService {
              RETURNING id, prices_include_tax, rate_percent, label, updated_at`,
             [uuidv7(), input.pricesIncludeTax, input.ratePercent.toFixed(2), input.label],
           );
-      const row = rows[0];
+      const row = firstRow<TaxRow>(rows);
       if (!row) throw new Error("Tax settings write returned no row");
       await this.audit.record(
         {

@@ -12,6 +12,7 @@ import type { Refund } from "./refund.entity";
   "chk_orders_amounts_nonneg",
   "\"subtotal\" >= 0 AND \"discount_total\" >= 0 AND \"shipping_total\" >= 0 AND \"tax_total\" >= 0 AND \"total\" >= 0",
 )
+@Check("chk_orders_total_refunded", "\"total_refunded\" BETWEEN 0 AND \"total\"")
 @Entity("orders")
 @Index(["status", "createdAt"])
 @Index(["email"])

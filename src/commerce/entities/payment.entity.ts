@@ -1,8 +1,9 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, Relation } from "typeorm";
+import { Check, Column, Entity, Index, JoinColumn, ManyToOne, Relation } from "typeorm";
 import { AppBaseEntity } from "../../database/base.entity";
 import { moneyTransformer } from "../../common/money/money";
 import { Order } from "./order.entity";
 
+@Check("chk_payments_amount", "\"amount\" >= 0")
 @Entity("payments")
 @Index(["orderId"])
 @Index(["reference"])

@@ -9,6 +9,7 @@ import { AuditService } from "../../audit/audit.service";
 import { OffsetPage, toOffsetPage } from "../../common/pagination/pagination";
 import { SqlParams } from "../../common/sql/sql-params";
 import { escapeLike } from "../../common/sql/escape-like";
+import { firstRow } from "../../common/sql/query-result";
 import type {
   CreateDiscountInput,
   DiscountDto,
@@ -157,7 +158,9 @@ export class DiscountsService {
       if (before.type === "percent" && (next.value < 1 || next.value > 100)) {
         throw AppException.badRequest("VALIDATION_ERROR", "Percent value must be between 1 and 100");
       }
-      if (before.type === "fixed" && next.value < 1) throw AppException.badRequest("VALIDATION_ERROR", "Fixed value must be at least 1");
+      if (before.type === "fixed" && (next.value < 1 || next.value > 2_000_000_000)) {
+        throw AppException.badRequest("VALIDATION_ERROR", "Fixed value must be between 1 and 2000000000");
+      }
       if (before.type === "free_shipping" && next.value !== 0) {
         throw AppException.badRequest("VALIDATION_ERROR", "free_shipping discounts have no value");
       }
@@ -171,7 +174,7 @@ export class DiscountsService {
          WHERE id = $1 RETURNING ${COLUMNS}`,
         [id, next.title, next.value, next.minSubtotal, next.startsAt, next.endsAt, next.usageLimit, next.oncePerEmail, next.isActive],
       );
-      const row = rows[0];
+      const row = firstRow<DiscountRow>(rows);
       if (!row) throw AppException.notFound("Discount");
       await this.audit.record(
         { action: "discount:update", entityType: "Discount", entityId: id, diff: { before: toDto(before), after: toDto(row) } },
