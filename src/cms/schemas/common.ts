@@ -32,6 +32,28 @@ export const safeLinkUrl = z.string().refine((v) => isSafeUrl(v, { allowMailTel:
   message: "URL inválida: use https://, /ruta, mailto: o tel:",
 });
 
+/**
+ * Markdown text field: no raw HTML (`<tag`, `</`, `<!`) and every link/image/reference destination must pass isSafeUrl.
+ * Rendering stays the storefront's job; this only guarantees the stored source cannot smuggle HTML or `javascript:` links.
+ */
+export const markdownText = (max: number) =>
+  z.string().max(max).superRefine((value, ctx) => {
+    if (/<[a-zA-Z/!?]/.test(value)) {
+      ctx.addIssue({ code: "custom", message: "HTML no permitido: use solo Markdown" });
+      return;
+    }
+    const dests: string[] = [];
+    for (const m of value.matchAll(/\]\(\s*(<[^>]*>|[^)\s]*)[^)]*\)/g)) dests.push(m[1] ?? "");
+    for (const m of value.matchAll(/^[ \t]{0,3}\[[^\]]*\]:[ \t]*(<[^>]*>|\S+)/gm)) dests.push(m[1] ?? "");
+    for (const raw of dests) {
+      const dest = raw.startsWith("<") && raw.endsWith(">") ? raw.slice(1, -1) : raw;
+      if (!isSafeUrl(dest, { allowMailTel: true })) {
+        ctx.addIssue({ code: "custom", message: "Enlace Markdown inválido: use https://, /ruta, mailto: o tel:" });
+        return;
+      }
+    }
+  });
+
 export const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color inválido (use #RRGGBB)");
 
 export const handleSlug = z

@@ -28,6 +28,30 @@ export const menuItemSchema: z.ZodType<MenuItem> = z.lazy(() =>
 
 export const MENU_MAX_DEPTH = 3;
 export const MENU_MAX_ITEMS = 50;
+/** Hard guard applied to the RAW json before recursive zod parsing (the schema itself enforces MENU_MAX_DEPTH). */
+const MENU_RAW_MAX_LEVELS = 4;
+
+/** Iterative scan of untrusted menu JSON: returns an issue if nesting exceeds the guard, so the recursive parser never sees it. */
+export function menuRawDepthIssue(raw: unknown): { path: string; message: string } | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const root = (raw as { items?: unknown }).items;
+  if (!Array.isArray(root)) return null;
+  const stack: { items: unknown[]; level: number; path: string }[] = [{ items: root, level: 1, path: "items" }];
+  let visited = 0;
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    for (let i = 0; i < cur.items.length; i++) {
+      const item = cur.items[i];
+      if (typeof item !== "object" || item === null) continue;
+      if (++visited > 10_000) return { path: "items", message: "Menú demasiado grande" };
+      const children = (item as { children?: unknown }).children;
+      if (!Array.isArray(children) || children.length === 0) continue;
+      if (cur.level + 1 > MENU_RAW_MAX_LEVELS) return { path: `${cur.path}.${i}.children`, message: `Profundidad máxima ${MENU_RAW_MAX_LEVELS} niveles` };
+      stack.push({ items: children, level: cur.level + 1, path: `${cur.path}.${i}.children` });
+    }
+  }
+  return null;
+}
 
 export const menuSchema = z
   .object({ items: z.array(menuItemSchema).max(MENU_MAX_ITEMS) })

@@ -1,7 +1,8 @@
-import { Column, Entity, Index } from "typeorm";
+import { Check, Column, Entity, Index } from "typeorm";
 import { AppBaseEntity } from "../../database/base.entity";
 
 @Entity("redirects")
+@Check("chk_redirects_status_code", "\"status_code\" IN (301, 302)")
 @Index("uq_redirects_from_path", ["fromPath"], { unique: true })
 export class Redirect extends AppBaseEntity {
   @Column({ type: "varchar", length: 500 })
@@ -15,7 +16,4 @@ export class Redirect extends AppBaseEntity {
 
   @Column({ type: "boolean", default: true })
   isActive!: boolean;
-
-  @Column({ type: "integer", default: 0 })
-  hits!: number;
 }

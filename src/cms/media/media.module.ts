@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuditModule } from "../../audit/audit.module";
 import { Media } from "../../catalog/entities";
 import { ENV } from "../../config/config.module";
+import { DatabaseModule } from "../../database/database.module";
 import type { Env } from "../../config/env";
 import { LocalDiskStorage } from "./local-disk.storage";
 import { MediaFilesController } from "./media-files.controller";
@@ -11,7 +12,7 @@ import { MediaService } from "./media.service";
 import { STORAGE_DRIVER } from "./storage.driver";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Media]), AuditModule],
+  imports: [TypeOrmModule.forFeature([Media]), AuditModule, DatabaseModule],
   controllers: [MediaController, MediaFilesController],
   providers: [
     MediaService,

@@ -8,6 +8,7 @@ import type { ContentKind } from "../entities/content-document.entity";
 import type { PreviewTokenResponseDto } from "./content.dto";
 
 const TTL_SECONDS = 60 * 60;
+const AUDIENCE = "content-preview";
 
 /** Short-lived (1 h) HS256 tokens that let the storefront read ONE document's draft. */
 @Injectable()
@@ -32,7 +33,7 @@ export class PreviewService {
   async sign(kind: ContentKind, key: string): Promise<PreviewTokenResponseDto> {
     const iat = Math.floor(this.clock.now().getTime() / 1000);
     const exp = iat + TTL_SECONDS;
-    const token = await new SignJWT({ kind, key }).setProtectedHeader({ alg: "HS256" }).setIssuedAt(iat).setExpirationTime(exp).sign(this.secret);
+    const token = await new SignJWT({ kind, key }).setAudience(AUDIENCE).setProtectedHeader({ alg: "HS256" }).setIssuedAt(iat).setExpirationTime(exp).sign(this.secret);
     const url = new URL("/api/preview", this.env.STOREFRONT_URL);
     url.searchParams.set("token", token);
     return { token, url: url.toString(), expiresAt: new Date(exp * 1000) };
@@ -43,6 +44,7 @@ export class PreviewService {
     try {
       const { payload } = await jwtVerify(token, this.secret, {
         algorithms: ["HS256"],
+        audience: AUDIENCE,
         requiredClaims: ["exp"],
         currentDate: this.clock.now(),
       });

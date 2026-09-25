@@ -14,7 +14,7 @@ export class MediaController {
 
   @Post()
   @RequirePermissions("media:write")
-  @UseInterceptors(FileInterceptor("file", { storage: memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
+  @UseInterceptors(FileInterceptor("file", { storage: memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 5, parts: 6, fieldSize: 1024 } }))
   async upload(@UploadedFile() file: Express.Multer.File | undefined, @Res({ passthrough: true }) res: Response): Promise<MediaResponseDto> {
     const result = await this.media.upload(file);
     res.status(result.created ? HttpStatus.CREATED : HttpStatus.OK);
