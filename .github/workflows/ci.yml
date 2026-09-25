@@ -37,7 +37,11 @@ jobs:
       - name: Apply migrations
         run: yarn migration:run:prod
       - name: Boot API and run smoke checks
+        env:
+          OWNER_EMAIL: owner@ci.test
+          OWNER_PASSWORD: ci-Correct-Horse-Battery-9
         run: |
+          yarn owner:create
           node dist/main.js > api.log 2>&1 &
           for i in $(seq 1 30); do curl -sf localhost:4000/health && break; sleep 1; done
           yarn smoke || (cat api.log; exit 1)

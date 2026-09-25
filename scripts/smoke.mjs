@@ -68,5 +68,8 @@ await check("CORS: allowed origin echoed, foreign origin not", async () => {
   assert(bad.headers.get("access-control-allow-origin") !== "https://evil.example", "foreign origin allowed");
 });
 
+import { identityChecks } from "./smoke-identity.mjs";
+await identityChecks({ base, check, assert });
+
 console.log(failed ? `\n${failed} check(s) failed` : "\nAll smoke checks passed");
 process.exit(failed ? 1 : 0);

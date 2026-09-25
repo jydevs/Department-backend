@@ -74,6 +74,10 @@ const schema = z
     /** the Next.js SERVER presents this so the API can rate-limit the real visitor IP, not the Next host */
     STOREFRONT_SERVER_KEY: secret(32),
     WOMPI_EVENTS_SECRET: z.string().optional(),
+
+    /* ── bootstrap: owner creation ── */
+    OWNER_EMAIL: z.string().email().optional(),
+    OWNER_PASSWORD: z.string().optional(),
   })
   .superRefine((env, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
