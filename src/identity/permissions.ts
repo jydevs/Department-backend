@@ -26,6 +26,8 @@ export const PERMISSIONS = [
   "settings:read",
   "marketing:read",
   "marketing:write",
+  "import:read",
+  "import:write",
   "analytics:read",
 ] as const;
 
