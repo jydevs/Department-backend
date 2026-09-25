@@ -82,6 +82,12 @@ const schema = z
     WOMPI_API_URL: z.string().url().default("https://sandbox.wompi.co/v1"),
     /** `mock` never talks to a payment gateway (dev/test only); production must use `wompi` */
     PAYMENT_PROVIDER: z.enum(["mock", "wompi"]).default("mock"),
+    /** the mock payment provider can approve orders without paying: must be turned on explicitly, never in production */
+    MOCK_PAYMENTS_ENABLED: z
+      .enum(["true", "false", "1", "0"])
+      .default("false")
+      .transform((v) => v === "true" || v === "1"),
+
     /** how long an unpaid order keeps its stock reserved */
     ORDER_RESERVATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 
@@ -114,6 +120,7 @@ const schema = z
     for (const origin of env.CORS_ORIGINS) {
       if (!origin.startsWith("https://")) issue("CORS_ORIGINS", `"${origin}" must be https:// in production`);
     }
+    if (env.MOCK_PAYMENTS_ENABLED) issue("MOCK_PAYMENTS_ENABLED", "must be false in production");
     if (env.PAYMENT_PROVIDER !== "wompi") issue("PAYMENT_PROVIDER", "must be wompi in production");
     for (const key of ["WOMPI_PUBLIC_KEY", "WOMPI_INTEGRITY_SECRET", "WOMPI_EVENTS_SECRET"] as const) {
       if (!env[key]) issue(key, "is required in production");

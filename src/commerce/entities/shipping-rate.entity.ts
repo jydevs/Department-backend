@@ -1,8 +1,9 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, Relation } from "typeorm";
+import { Check, Column, Entity, Index, JoinColumn, ManyToOne, Relation } from "typeorm";
 import { AppBaseEntity } from "../../database/base.entity";
 import { moneyTransformer } from "../../common/money/money";
 import { ShippingZone } from "./shipping-zone.entity";
 
+@Check("chk_shipping_rates_price", "\"price\" >= 0")
 @Entity("shipping_rates")
 @Index(["zoneId", "position"])
 export class ShippingRate extends AppBaseEntity {

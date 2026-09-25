@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from "uuid";
 import { AppException } from "../../common/errors/app-exception";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
+import { firstRow } from "../../common/sql/query-result";
 import { CartService } from "../cart/cart.service";
 import { zoneCoversDepartment } from "../pricing";
 import type {
@@ -139,7 +140,7 @@ export class ShippingService {
            WHERE id = $1 RETURNING ${ZONE_COLUMNS}`,
           [id, input.name ?? before.name, input.departments ?? before.departments, input.isActive ?? before.is_active],
         );
-        const zone = rows[0];
+        const zone = firstRow<ZoneRow>(rows);
         if (!zone) throw AppException.notFound("Shipping zone");
         await this.audit.record(
           {
@@ -231,7 +232,7 @@ export class ShippingService {
          WHERE id = $1 RETURNING ${RATE_COLUMNS}`,
         [id, next.name, next.price, next.freeOverSubtotal, next.minDays, next.maxDays, next.isActive, next.position],
       );
-      const rate = rows[0];
+      const rate = firstRow<RateRow>(rows);
       if (!rate) throw AppException.notFound("Shipping rate");
       await this.audit.record(
         { action: "shipping_rate:update", entityType: "ShippingRate", entityId: id, diff: { before: toRate(before), after: toRate(rate) } },
@@ -244,7 +245,7 @@ export class ShippingService {
   async deleteRate(id: string): Promise<void> {
     await this.tx.run(async (manager) => {
       const rows = await manager.query<RateRow[]>(`DELETE FROM shipping_rates WHERE id = $1 RETURNING ${RATE_COLUMNS}`, [id]);
-      const rate = rows[0];
+      const rate = firstRow<RateRow>(rows);
       if (!rate) throw AppException.notFound("Shipping rate");
       await this.audit.record({ action: "shipping_rate:delete", entityType: "ShippingRate", entityId: id, diff: { ...toRate(rate) } }, manager);
     });

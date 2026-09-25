@@ -8,6 +8,7 @@ import { AppException } from "../../common/errors/app-exception";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { TransactionService } from "../../database/transaction.service";
+import { rowsOf } from "../../common/sql/query-result";
 import { InventoryService } from "../../inventory/inventory.service";
 import { Cart, CartLine, Discount, DiscountRedemption, Fulfillment, Order, OrderEvent, OrderLine, Payment } from "../entities";
 import { PAYMENT_PROVIDER, PaymentProvider } from "../payments/payment-provider";
@@ -19,7 +20,7 @@ import { CheckoutInput, CheckoutResponseDto, PublicOrderDto, StoredCheckoutRespo
 const SCOPE = "checkout";
 const CREATED = 201;
 /** Quote warnings that make the purchase impossible (stock shortages are raised precisely by `reserve`). */
-const BLOCKING_WARNINGS = new Set<string>(["VARIANT_UNAVAILABLE", "DISCOUNT_INVALID"]);
+const BLOCKING_WARNINGS = new Set<string>(["VARIANT_UNAVAILABLE"]);
 
 const sha256Hex = (value: string): string => createHash("sha256").update(value).digest("hex");
 
@@ -84,13 +85,14 @@ export class CheckoutService {
     if (!cart || !safeEqual(sha256Hex(cartToken), cart.tokenHash)) throw AppException.notFound("Cart");
 
     // 2. Idempotency: INSERT ... ON CONFLICT DO NOTHING, then lock the row.
-    const inserted = await manager.query<{ id: string }[]>(
+    const insertedRes = await manager.query<{ id: string }[]>(
       `INSERT INTO idempotency_keys (id, scope, "key", request_hash, status, created_at, updated_at)
        VALUES ($1, $2, $3, $4, 'in_progress', $5, $5)
        ON CONFLICT (scope, "key") DO NOTHING
        RETURNING id`,
       [uuidv7(), SCOPE, idempotencyKey, requestHash, now],
     );
+    const inserted = rowsOf<{ id: string }>(insertedRes);
     const rows = await manager.query<IdempotencyRow[]>(
       `SELECT id, request_hash, status, response FROM idempotency_keys WHERE scope = $1 AND "key" = $2 FOR UPDATE`,
       [SCOPE, idempotencyKey],
@@ -125,10 +127,12 @@ export class CheckoutService {
     this.assertPurchasable(quote);
 
     // 5. Stock (409 INSUFFICIENT_STOCK with details) — locks in a stable order
-    await this.inventory.reserve(
+    const reserved = await this.inventory.reserve(
       quote.lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
       manager,
     );
+    // What was REALLY reserved per variant (untracked / backorderable variants reserve nothing); it drives commit/release later.
+    const reservedLeft = new Map(reserved.map((r) => [r.variantId, r.quantity]));
 
     // 6. Order, lines, payment, event
     const accessToken = randomBytes(32).toString("base64url");
@@ -164,8 +168,10 @@ export class CheckoutService {
 
     const lineRepo = manager.getRepository(OrderLine);
     await lineRepo.save(
-      quote.lines.map((l) =>
-        lineRepo.create({
+      quote.lines.map((l) => {
+        const take = Math.min(l.quantity, reservedLeft.get(l.variantId) ?? 0);
+        reservedLeft.set(l.variantId, (reservedLeft.get(l.variantId) ?? 0) - take);
+        return lineRepo.create({
           orderId: order.id,
           variantId: l.variantId,
           productId: l.productId,
@@ -176,8 +182,9 @@ export class CheckoutService {
           unitPrice: l.unitPrice,
           quantity: l.quantity,
           lineTotal: l.lineTotal,
-        }),
-      ),
+          reservedQuantity: take,
+        });
+      }),
     );
     const paymentRepo = manager.getRepository(Payment);
     await paymentRepo.save(
@@ -224,6 +231,10 @@ export class CheckoutService {
 
   private async replay(manager: EntityManager, response: unknown, now: Date): Promise<CheckoutResponseDto> {
     if (!isStoredResponse(response)) throw AppException.conflict("IDEMPOTENCY_IN_PROGRESS", "The stored response is not available yet");
+    const current = await manager.query<{ status: string }[]>(`SELECT status FROM orders WHERE id = $1`, [response.orderId]);
+    if (current[0]?.status !== "pending") {
+      throw AppException.conflict("ORDER_NOT_PAYABLE", "This order can no longer be paid");
+    }
     const accessToken = randomBytes(32).toString("base64url");
     await manager.query(`UPDATE orders SET access_token_hash = $2, version = version + 1, updated_at = $3 WHERE id = $1`, [
       response.orderId,
