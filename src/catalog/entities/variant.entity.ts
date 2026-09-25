@@ -11,7 +11,7 @@ export class Variant extends VersionedEntity {
   @Column({ type: "uuid" })
   productId!: string;
 
-  @ManyToOne(() => Product, { onDelete: "CASCADE" })
+  @ManyToOne(() => Product, (product) => product.variants, { onDelete: "CASCADE" })
   @JoinColumn({ name: "product_id" })
   product?: Relation<Product>;
 

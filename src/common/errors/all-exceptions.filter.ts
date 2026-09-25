@@ -79,7 +79,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (body.statusCode >= 500) {
       // sanitized: no SQL, no bound parameters, no query string (tokens/PII can live there)
-      this.logger.error({ err: this.safeError(exception), requestId, method: req.method, path: req.path }, "Unhandled error");
+      this.logger.error({ failure: this.safeError(exception), requestId, method: req.method, path: req.path }, "Unhandled error");
     }
 
     if (res.headersSent) return;
@@ -88,8 +88,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   private safeError(e: unknown) {
     if (e instanceof QueryFailedError) {
-      const d = e.driverError as { code?: string; constraint?: string; table?: string } | undefined;
-      return { type: "QueryFailedError", pgCode: d?.code, constraint: d?.constraint, table: d?.table };
+      const d = e.driverError as { code?: string; constraint?: string; table?: string; message?: string } | undefined;
+      // the PG message names the problem ("syntax error at or near…") but never carries bound values
+      return { type: "QueryFailedError", pgCode: d?.code, pgMessage: d?.message, constraint: d?.constraint, table: d?.table };
     }
     if (e instanceof Error) return { type: e.name, message: e.message, stack: e.stack };
     return { type: typeof e };

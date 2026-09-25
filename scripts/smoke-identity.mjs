@@ -19,10 +19,11 @@ export async function identityChecks({ base, check, assert }) {
     process.env.OWNER_EMAIL && process.env.OWNER_PASSWORD
       ? { email: process.env.OWNER_EMAIL, password: process.env.OWNER_PASSWORD }
       : null;
-  if (!owner) return console.log("       (set OWNER_EMAIL/OWNER_PASSWORD to run the identity flow)");
+  if (!owner) { console.log("       (set OWNER_EMAIL/OWNER_PASSWORD to run the identity flow)"); return {}; }
 
   let token;
   let cookie;
+  let analystToken;
 
   await check("login rejects a wrong password (401 INVALID_CREDENTIALS)", async () => {
     const r = await post("/auth/login", { email: owner.email, password: "definitely-wrong-password" });
@@ -87,7 +88,7 @@ export async function identityChecks({ base, check, assert }) {
     assert(created.status < 300, `create status ${created.status}`);
     const temp = (await created.json()).password;
     const login = await post("/auth/login", { email, password: temp });
-    const analystToken = (await login.json()).accessToken;
+    analystToken = (await login.json()).accessToken;
     const denied = await post(
       "/admin/staff",
       { email: `x${Date.now()}@dept.test`, fullName: "X", roleId: analyst.id },
@@ -95,4 +96,5 @@ export async function identityChecks({ base, check, assert }) {
     );
     assert(denied.status === 403, `got ${denied.status}`);
   });
+  return { ownerToken: token, analystToken };
 }

@@ -2,7 +2,7 @@ import { Column, Entity, Index } from "typeorm";
 import { VersionedEntity } from "../../database/base.entity";
 
 @Entity("locations")
-@Index(["isDefault"], { unique: true, where: '"isDefault" = true' })
+@Index(["isDefault"], { unique: true, where: '"is_default" = true' })
 export class Location extends VersionedEntity {
   @Column({ type: "varchar", length: 255 })
   name!: string;

@@ -1,4 +1,5 @@
-import { Column, Entity, Index } from "typeorm";
+import { Column, Entity, Index, OneToMany, Relation } from "typeorm";
+import type { Variant } from "./variant.entity";
 import { DeleteDateColumn, VersionedEntity } from "../../database/base.entity";
 
 /**
@@ -41,4 +42,8 @@ export class Product extends VersionedEntity {
 
   @DeleteDateColumn({ type: "timestamptz", precision: 3, nullable: true })
   deletedAt?: Date | null;
+
+  /** Inverse side for query-builder joins (`p.variants`); no column of its own. */
+  @OneToMany("Variant", (variant: Variant) => variant.product)
+  variants?: Relation<Variant[]>;
 }
