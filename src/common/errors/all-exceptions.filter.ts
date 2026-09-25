@@ -125,7 +125,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (exception instanceof QueryFailedError) {
       const pg = PG[(exception.driverError as { code?: string } | undefined)?.code ?? ""];
-      if (pg) return this.build(pg[0], pg[1], pg[2]);
+      if (pg) {
+        this.logger.warn({ ...this.safeError(exception) }, "Database error mapped to client error");
+        return this.build(pg[0], pg[1], pg[2]);
+      }
     }
 
     // body-parser / http-errors: malformed JSON, payload too large, wrong content type, aborted request

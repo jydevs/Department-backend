@@ -6,7 +6,7 @@ import { CreateDateColumn, PrimaryColumn, UpdateDateColumn, VersionColumn } from
  * + timestamptz audit columns with millisecond precision, so JS `Date` cursors round-trip exactly.
  */
 export abstract class AppBaseEntity {
-  @PrimaryColumn({ type: "uuid" })
+  @PrimaryColumn({ type: "uuid", default: () => "gen_random_uuid()" }) // DB fallback for plain-object inserts; entities built with new/create() get a v7
   id: string = uuidv7();
 
   @CreateDateColumn({ type: "timestamptz", precision: 3 })
