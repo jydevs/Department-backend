@@ -36,12 +36,12 @@ export interface ShippingZoneInfo {
   rates: ShippingRateInfo[];
 }
 
-export interface LegalSection {
+export type LegalSection = {
   id: string;
   type: "page-header" | "rich-text";
   enabled: true;
   settings: Record<string, unknown>;
-}
+};
 
 export interface LegalPage {
   handle: string;

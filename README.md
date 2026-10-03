@@ -39,6 +39,7 @@ Swagger UI: `http://localhost:4000/docs` (JSON en `/docs-json`; desactivado por 
 | `yarn migration:run` · `yarn migration:revert` | Aplica / revierte (desarrollo, con ts-node) |
 | `yarn migration:run:prod` | Aplica las migraciones desde `dist/` (CI y despliegue) |
 | `yarn owner:create` | Crea el primer Owner |
+| `yarn content:complete [--dry-run] [--publish-legal] [--only=translate\|footer\|legal\|shipping]` | Completa la tienda sembrada: traduce textos al español, enlaza contacto/legales en el pie, crea las páginas legales (borrador) y zonas/tarifas de envío para Colombia. Idempotente; ver [docs/CONTENIDO-INICIAL.md](docs/CONTENIDO-INICIAL.md) |
 | `yarn smoke` | Comprobaciones contra una API en marcha (`API_URL`, por defecto `localhost:4000`) |
 | `API_URL=… node scripts/export-openapi.mjs` | Descarga `/docs-json` a `docs/openapi.json` |
 
@@ -182,7 +183,7 @@ src/
   imports/       importador Shopify por CSV (Fase 8)
   maintenance/   mantenimiento horario y POST /admin/maintenance/run
   health/        /health · /ready · /version
-scripts/         dev-db, smoke*, create-owner, export-openapi
+scripts/         dev-db, smoke*, create-owner, complete-storefront (content:complete), export-openapi
 docs/            PLAN.md · API.md · contracts/
 Dockerfile · docker-compose.yml · .env.example · .github/workflows/ci.yml
 ```
