@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { DataSource, EntityManager } from "typeorm";
+import { DataSource, EntityManager, QueryRunner } from "typeorm";
 import { AppException } from "../common/errors/app-exception";
 
 export type IsolationLevel = "READ COMMITTED" | "REPEATABLE READ" | "SERIALIZABLE";
@@ -20,7 +20,19 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 @Injectable()
 export class TransactionService {
+  private readonly commitHooks = new WeakMap<QueryRunner, Array<() => void>>();
+
   constructor(private readonly dataSource: DataSource) {}
+
+  /**
+   * Runs `hook` once the transaction that owns `manager` has COMMITTED (never on rollback or retry).
+   * Outside a `run()` transaction it runs immediately. Hooks must not throw and must not await: fire and forget.
+   */
+  afterCommit(manager: EntityManager, hook: () => void): void {
+    const hooks = manager.queryRunner ? this.commitHooks.get(manager.queryRunner) : undefined;
+    if (hooks) hooks.push(hook);
+    else hook();
+  }
 
   async run<T>(
     fn: (manager: EntityManager) => Promise<T>,
@@ -29,8 +41,20 @@ export class TransactionService {
     const { isolation = "READ COMMITTED", retries = 3 } = opts;
 
     for (let attempt = 0; ; attempt++) {
+      const hooks: Array<() => void> = [];
       try {
-        return await this.dataSource.transaction(isolation, fn);
+        const result = await this.dataSource.transaction(isolation, (manager) => {
+          if (manager.queryRunner) this.commitHooks.set(manager.queryRunner, hooks);
+          return fn(manager);
+        });
+        for (const hook of hooks) {
+          try {
+            hook();
+          } catch {
+            // a post-commit hook must never fail the request that already committed
+          }
+        }
+        return result;
       } catch (err) {
         const code = sqlState(err);
         if (code && RETRYABLE.has(code)) {

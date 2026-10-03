@@ -8,6 +8,7 @@ import { sanitizeRichText } from "../../common/html/sanitize";
 import { SqlParams } from "../../common/sql/sql-params";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
+import { CatalogCacheService } from "../cache/catalog-cache.service";
 import {
   CollectionCreateInput,
   CollectionUpdateInput,
@@ -41,6 +42,7 @@ export class CollectionsService {
     private readonly dataSource: DataSource,
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
+    private readonly cache: CatalogCacheService,
   ) {}
 
   async create(input: CollectionCreateInput): Promise<CollectionDto> {
@@ -84,6 +86,7 @@ export class CollectionsService {
         },
         manager,
       );
+      this.cache.collectionsChanged(manager, { collectionIds: [saved.id] });
 
       return this.mapToDto(saved);
     });
@@ -107,6 +110,7 @@ export class CollectionsService {
       }
 
       const diff: Record<string, unknown> = {};
+      const previousHandle = collection.handle;
 
       if (input.handle !== undefined && input.handle !== collection.handle) {
         diff.handle = { old: collection.handle, new: input.handle };
@@ -166,6 +170,7 @@ export class CollectionsService {
           },
           manager,
         );
+        this.cache.collectionsChanged(manager, { collectionIds: [updated.id], handles: [previousHandle] });
       }
 
       return this.mapToDto(updated);
@@ -191,6 +196,7 @@ export class CollectionsService {
         },
         manager,
       );
+      this.cache.collectionsChanged(manager, { handles: [collection.handle] });
     });
   }
 
@@ -257,6 +263,7 @@ export class CollectionsService {
         },
         manager,
       );
+      this.cache.collectionsChanged(manager, { collectionIds: [collectionId] });
     });
   }
 
