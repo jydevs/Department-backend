@@ -29,6 +29,7 @@ export const variantForResponseSchema = z.object({
   allowBackorder: z.boolean(),
   optionValueIds: z.array(z.string().uuid()),
   isActive: z.boolean(),
+  version: z.number().int(),
 });
 
 export type VariantForResponse = z.infer<typeof variantForResponseSchema>;

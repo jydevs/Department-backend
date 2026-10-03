@@ -61,6 +61,16 @@ export async function catalogChecks({ base, check, assert, ownerToken, analystTo
     assert(!("version" in detail) && !("deletedAt" in detail), "internal fields leaked");
   });
 
+  await check("admin detail exposes each variant's `version`, and PATCH with it succeeds (no 409 probing)", async () => {
+    const detail = await ok(await call("GET", `/admin/products/${product.id}`, undefined, ownerToken), "admin detail");
+    const v = detail.variants[0];
+    assert(Number.isInteger(v.version), `variant.version missing: ${JSON.stringify(v)}`);
+    const patched = await ok(await call("PATCH", `/admin/products/${product.id}/variants/${v.id}`, { version: v.version, title: "Única v2" }, ownerToken), "patch variant");
+    assert(patched.version === v.version + 1, `version not bumped: ${patched.version}`);
+    const stale = await call("PATCH", `/admin/products/${product.id}/variants/${v.id}`, { version: v.version, title: "Única v3" }, ownerToken);
+    assert(stale.status === 409, `stale version → ${stale.status}`);
+  });
+
   await check("adjusting stock flips `available` and rejects negative stock", async () => {
     await ok(await call("POST", "/admin/inventory/adjust", { variantId: variant.id, locationId, delta: 5, reason: "received" }, ownerToken), "adjust");
     const detail = await (await fetch(`${api}/storefront/products/${product.handle}`)).json();
