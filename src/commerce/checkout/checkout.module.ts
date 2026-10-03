@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuditModule } from "../../audit/audit.module";
 import { DatabaseModule } from "../../database/database.module";
+import { CustomersModule } from "../../customers/customers.module";
 import { InventoryModule } from "../../inventory/inventory.module";
 import {
   Cart,
@@ -39,6 +40,7 @@ import { CheckoutService } from "./checkout.service";
     PricingModule,
     AuditModule,
     PaymentsModule,
+    CustomersModule,
   ],
   providers: [CheckoutService],
   controllers: [CheckoutController],

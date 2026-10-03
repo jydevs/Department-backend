@@ -66,9 +66,9 @@ export class CheckoutService {
    * Idempotent replay: the stored response never contains the plaintext accessToken. A replay (same key + same body)
    * returns the same order and payment instructions with a NEW accessToken and invalidates the previous one.
    */
-  async create(input: CheckoutInput, idempotencyKey: string, cartToken: string): Promise<CheckoutResponseDto> {
+  async create(input: CheckoutInput, idempotencyKey: string, cartToken: string, customerId: string | null = null): Promise<CheckoutResponseDto> {
     const requestHash = sha256Hex(canonicalize(input));
-    return this.transactions.run((manager) => this.createInTransaction(manager, input, idempotencyKey, cartToken, requestHash));
+    return this.transactions.run((manager) => this.createInTransaction(manager, input, idempotencyKey, cartToken, requestHash, customerId));
   }
 
   private async createInTransaction(
@@ -77,6 +77,7 @@ export class CheckoutService {
     idempotencyKey: string,
     cartToken: string,
     requestHash: string,
+    customerId: string | null,
   ): Promise<CheckoutResponseDto> {
     const now = this.clock.now();
 
@@ -142,6 +143,7 @@ export class CheckoutService {
       orderRepo.create({
         accessTokenHash: sha256Hex(accessToken),
         email: input.email,
+        customerId,
         phone: input.phone ?? null,
         status: "pending",
         paymentStatus: "pending",
@@ -203,8 +205,8 @@ export class CheckoutService {
         orderId: order.id,
         type: "order.created",
         data: { total: order.total, currency: order.currency, lines: quote.lines.length, discountCode: order.discountCode },
-        actorType: "guest",
-        actorId: null,
+        actorType: customerId ? "customer" : "guest",
+        actorId: customerId,
       }),
     );
 

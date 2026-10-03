@@ -3,7 +3,7 @@
 // Reads the e-mail outbox straight from Postgres (DATABASE_URL) to pick up verification/reset tokens: the log transport never sends anything.
 import { createRequire } from "node:module";
 
-export async function customerChecks({ base, check, assert, ownerToken, analystToken, buyerEmail, orderNumber }) {
+export async function customerChecks({ base, check, assert, ownerToken, analystToken, buyerEmail, orderNumber, rateId, locationId }) {
   if (!ownerToken) return console.log("       (no owner token: customers flow skipped)");
   try {
     process.loadEnvFile();
@@ -130,6 +130,34 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
         const other = await ok(await call("POST", "/storefront/customers/login", { email: otherEmail, password: password1 }), "login other");
         const idor = await call("GET", `/storefront/customers/me/orders/${orderNumber}`, undefined, other.accessToken);
         assert(idor.status === 404, `another customer's order → ${idor.status}`);
+      });
+    }
+
+    if (rateId && locationId) {
+      await check("customers: checkout with a customer token assigns the order to them; bad tokens and anonymous still check out as guests", async () => {
+        const p = await ok(await call("POST", "/admin/products", { title: `Own order ${stamp}`, variants: [{ title: "Única", sku: `OWN-${stamp}`, price: 50000 }] }, ownerToken), "product");
+        await ok(await call("POST", `/admin/products/${p.id}/publish`, {}, ownerToken), "publish");
+        await ok(await call("POST", "/admin/inventory/adjust", { variantId: p.variants[0].id, locationId, delta: 5, reason: "received" }, ownerToken), "stock");
+        const address = { fullName: "Smoke Buyer", phone: "3001234567", department: "Cundinamarca", city: "Bogotá", address1: "Calle 1 # 2-3" };
+        const buy = async (bearer, to) => {
+          for (let attempt = 0; attempt < 14; attempt++) {
+            const c = await ok(await call("POST", "/storefront/carts", {}), "cart");
+            const hdr = { "x-cart-token": c.token };
+            await ok(await call("POST", `/storefront/carts/${c.id}/lines`, { variantId: p.variants[0].id, quantity: 1 }, undefined, hdr), "line");
+            const r = await call("POST", "/storefront/checkouts", { cartId: c.id, email: to, shippingAddress: address, shippingRateId: rateId }, bearer, { ...hdr, "idempotency-key": `own-${stamp}-${Math.random().toString(36).slice(2)}` });
+            if (r.status !== 429) return (await ok(r, "checkout")).orderNumber; // checkout is throttled to 10/min/IP: wait for the window
+            await new Promise((res) => setTimeout(res, 5000));
+          }
+          throw new Error("checkout stayed throttled");
+        };
+        const mine = await buy(access, `gift-${stamp}@dept.test`);
+        const asGuest = await buy("not-a-valid-token", `guest-${stamp}@dept.test`);
+        const anonymous = await buy(undefined, `anon-${stamp}@dept.test`);
+        const list = items(await ok(await call("GET", "/storefront/customers/me/orders", undefined, access), "orders")).map((o) => o.orderNumber);
+        assert(list.includes(mine), "authenticated checkout is not in my orders");
+        assert(!list.includes(asGuest) && !list.includes(anonymous), "guest orders leaked into my orders");
+        assert((await call("GET", `/storefront/customers/me/orders/${mine}`, undefined, access)).status === 200, "own order detail");
+        assert((await call("GET", `/storefront/customers/me/orders/${anonymous}`, undefined, access)).status === 404, "guest order detail must be 404");
       });
     }
 
