@@ -4,7 +4,8 @@ API headless de **Daregular Dept.** (tienda de ropa, Colombia): catálogo, inven
 pedidos, clientes con Habeas Data, marketing, analítica e importador desde Shopify. NestJS 11 · TypeORM · PostgreSQL · Zod · OpenAPI.
 
 - Plan y decisiones: [`docs/PLAN.md`](docs/PLAN.md) · contratos por fase: `docs/contracts/`.
-- Guía de integración para el front y el panel admin: [`docs/API.md`](docs/API.md).
+- Guía de integración para el front y el panel admin: [`docs/API.md`](docs/API.md) · estado de la integración: [`docs/ADMIN-UI.md`](docs/ADMIN-UI.md).
+- Base de datos local y diccionario de datos: [`docs/BASE-DE-DATOS-LOCAL.md`](docs/BASE-DE-DATOS-LOCAL.md).
 - Superficies: `/api/v1/storefront/*` (público), `/api/v1/admin/*` (personal con permisos), `/api/v1/auth/*`; operación sin prefijo (`/health`, `/ready`, `/version`, `/media/:key`, `/webhooks/wompi`).
 
 ## Requisitos
