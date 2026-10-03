@@ -2,7 +2,7 @@ import { z } from "zod";
 import { sectionEnvelopeSchema, validateSection } from "../sections/registry";
 
 export const MAX_SECTIONS = 40;
-export const TEMPLATE_KEYS = ["home", "collection", "product", "cart", "search", "404", "page"] as const;
+export const TEMPLATE_KEYS = ["home", "collection", "product", "cart", "search", "404", "page", "layout"] as const;
 
 /** Adds per-section registry validation and unique section ids. */
 export function refineSections(sections: { id: string }[], ctx: z.RefinementCtx, basePath: (string | number)[]): void {

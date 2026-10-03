@@ -98,6 +98,12 @@ const schema = z
     /** how long an unpaid order keeps its stock reserved */
     ORDER_RESERVATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 
+    /** on boot, create the default CMS documents (site settings, menus, templates, pages) that do not exist yet; never overwrites edits */
+    SEED_DEFAULT_CONTENT: z
+      .enum(["true", "false", "1", "0"])
+      .default("true")
+      .transform((v) => v === "true" || v === "1"),
+
     /* ── bootstrap: owner creation ── */
     OWNER_EMAIL: z.string().email().optional(),
     OWNER_PASSWORD: z.string().optional(),
