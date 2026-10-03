@@ -22,9 +22,7 @@
     "migration:generate": "yarn typeorm migration:generate",
     "smoke": "node scripts/smoke.mjs",
     "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
-    "owner:create": "ts-node -r tsconfig-paths/register scripts/create-owner.ts",
-    "content:seed": "ts-node -r tsconfig-paths/register scripts/seed-content.ts",
-    "catalog:seed": "ts-node -r tsconfig-paths/register scripts/seed-catalog.ts"
+    "owner:create": "ts-node -r tsconfig-paths/register scripts/create-owner.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11",

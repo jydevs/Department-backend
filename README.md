@@ -4,8 +4,7 @@ API headless de **Daregular Dept.** (tienda de ropa, Colombia): catálogo, inven
 pedidos, clientes con Habeas Data, marketing, analítica e importador desde Shopify. NestJS 11 · TypeORM · PostgreSQL · Zod · OpenAPI.
 
 - Plan y decisiones: [`docs/PLAN.md`](docs/PLAN.md) · contratos por fase: `docs/contracts/`.
-- Guía de integración para el front y el panel admin: [`docs/API.md`](docs/API.md) · estado de la integración: [`docs/ADMIN-UI.md`](docs/ADMIN-UI.md).
-- Base de datos local y diccionario de datos: [`docs/BASE-DE-DATOS-LOCAL.md`](docs/BASE-DE-DATOS-LOCAL.md).
+- Guía de integración para el front y el panel admin: [`docs/API.md`](docs/API.md).
 - Superficies: `/api/v1/storefront/*` (público), `/api/v1/admin/*` (personal con permisos), `/api/v1/auth/*`; operación sin prefijo (`/health`, `/ready`, `/version`, `/media/:key`, `/webhooks/wompi`).
 
 ## Requisitos
@@ -21,14 +20,12 @@ cp .env.example .env            # ya apunta al Postgres embebido (puerto 5433)
 yarn db:start                   # terminal 1: Postgres local (Ctrl+C para parar; datos en .data/pg)
 yarn migration:run              # terminal 2: crea el esquema
 OWNER_EMAIL=tu@correo.com OWNER_PASSWORD='una-contraseña-larga' yarn owner:create   # primer Owner (mín. 12 caracteres; en servidores mejor vía .env que en la línea de comandos: queda en el historial)
-yarn start:dev                  # API en http://localhost:4000 (siembra el contenido del CMS la primera vez)
-yarn catalog:seed               # opcional: catálogo demo (9 productos, colecciones all/men/women, stock 10)
+yarn start:dev                  # API en http://localhost:4000
 yarn smoke                      # terminal 3: recorrido completo (ver "Smoke")
 ```
 
 Swagger UI: `http://localhost:4000/docs` (JSON en `/docs-json`; desactivado por defecto con `NODE_ENV=production`).
 `yarn owner:create` es idempotente y usa `OWNER_EMAIL`/`OWNER_PASSWORD` del entorno o del `.env`.
-Contenido del sitio: `SEED_DEFAULT_CONTENT=true` (por defecto) crea al arrancar los documentos publicados `settings/site`, `menu/main|footer`, `template/layout|home|collection|product|search|cart|404` y las páginas `community` y `contact` solo si no existen (ver `docs/CMS-SECTIONS.md`). Si la BD es WIN1252 (Postgres embebido en Windows), los caracteres fuera de ese código no se pueden guardar; créala en UTF8.
 
 ## Scripts
 
@@ -42,8 +39,6 @@ Contenido del sitio: `SEED_DEFAULT_CONTENT=true` (por defecto) crea al arrancar 
 | `yarn migration:run` · `yarn migration:revert` | Aplica / revierte (desarrollo, con ts-node) |
 | `yarn migration:run:prod` | Aplica las migraciones desde `dist/` (CI y despliegue) |
 | `yarn owner:create` | Crea el primer Owner |
-| `yarn content:seed` | Crea los documentos CMS por defecto que falten (idempotente, nunca pisa ediciones). También se ejecuta al arrancar si `SEED_DEFAULT_CONTENT=true` (por defecto) |
-| `yarn catalog:seed [--force]` | Catálogo demo: solo si no hay productos (con `--force` añade los que falten por handle). Imágenes por ruta relativa `/images/...` del front |
 | `yarn smoke` | Comprobaciones contra una API en marcha (`API_URL`, por defecto `localhost:4000`) |
 | `API_URL=… node scripts/export-openapi.mjs` | Descarga `/docs-json` a `docs/openapi.json` |
 
