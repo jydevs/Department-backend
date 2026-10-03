@@ -684,6 +684,739 @@
         ]
       }
     },
+    "/api/v1/admin/content/section-types": {
+      "get": {
+        "operationId": "ContentAdminController_sectionTypes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/preview-tokens": {
+      "post": {
+        "operationId": "ContentAdminController_createPreviewToken",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/pages": {
+      "post": {
+        "operationId": "ContentAdminController_createPage",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents": {
+      "get": {
+        "operationId": "ContentAdminController_list",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents/{kind}/{key}": {
+      "get": {
+        "operationId": "ContentAdminController_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      },
+      "put": {
+        "operationId": "ContentAdminController_upsertDraft",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertDraftDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      },
+      "delete": {
+        "operationId": "ContentAdminController_deletePage",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents/{kind}/{key}/publish": {
+      "post": {
+        "operationId": "ContentAdminController_publish",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents/{kind}/{key}/schedule": {
+      "post": {
+        "operationId": "ContentAdminController_schedule",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents/{kind}/{key}/schedule/{versionId}": {
+      "delete": {
+        "operationId": "ContentAdminController_cancelSchedule",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents/{kind}/{key}/discard": {
+      "post": {
+        "operationId": "ContentAdminController_discard",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents/{kind}/{key}/versions": {
+      "get": {
+        "operationId": "ContentAdminController_listVersions",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents/{kind}/{key}/versions/{versionId}": {
+      "get": {
+        "operationId": "ContentAdminController_getVersion",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/admin/content/documents/{kind}/{key}/versions/{versionId}/restore": {
+      "post": {
+        "operationId": "ContentAdminController_restore",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "settings",
+                "menu",
+                "template",
+                "page"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentAdmin"
+        ]
+      }
+    },
+    "/api/v1/storefront/content/settings": {
+      "get": {
+        "operationId": "ContentStorefrontController_settings",
+        "parameters": [
+          {
+            "name": "preview",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 4000,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentStorefront"
+        ]
+      }
+    },
+    "/api/v1/storefront/content/menus/{key}": {
+      "get": {
+        "operationId": "ContentStorefrontController_menu",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "preview",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 4000,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentStorefront"
+        ]
+      }
+    },
+    "/api/v1/storefront/content/templates/{key}": {
+      "get": {
+        "operationId": "ContentStorefrontController_template",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "preview",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 4000,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentStorefront"
+        ]
+      }
+    },
+    "/api/v1/storefront/content/pages": {
+      "get": {
+        "operationId": "ContentStorefrontController_pages",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentStorefront"
+        ]
+      }
+    },
+    "/api/v1/storefront/content/pages/{key}": {
+      "get": {
+        "operationId": "ContentStorefrontController_page",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "preview",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 4000,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentStorefront"
+        ]
+      }
+    },
+    "/api/v1/storefront/content/bundle": {
+      "get": {
+        "operationId": "ContentStorefrontController_bundle",
+        "parameters": [
+          {
+            "name": "preview",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "name": "template",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "home",
+              "type": "string",
+              "enum": [
+                "404",
+                "home",
+                "collection",
+                "product",
+                "cart",
+                "search",
+                "page"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ContentStorefront"
+        ]
+      }
+    },
     "/api/v1/admin/products": {
       "get": {
         "operationId": "ProductsController_listProducts",
@@ -1435,6 +2168,154 @@
         "tags": [
           "Collections"
         ]
+      },
+      "get": {
+        "operationId": "CollectionsController_listMembers",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Collections"
+        ]
+      },
+      "post": {
+        "operationId": "CollectionsController_addMembers",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCollectionMembersDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Collections"
+        ]
+      }
+    },
+    "/api/v1/admin/collections/{id}/products/reorder": {
+      "patch": {
+        "operationId": "CollectionsController_reorderMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderCollectionMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Collections"
+        ]
+      }
+    },
+    "/api/v1/admin/collections/{id}/products/{productId}": {
+      "delete": {
+        "operationId": "CollectionsController_removeMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Collections"
+        ]
       }
     },
     "/api/v1/admin/collections/preview-rules": {
@@ -1646,739 +2527,6 @@
         },
         "tags": [
           "Storefront"
-        ]
-      }
-    },
-    "/api/v1/admin/content/section-types": {
-      "get": {
-        "operationId": "ContentAdminController_sectionTypes",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/preview-tokens": {
-      "post": {
-        "operationId": "ContentAdminController_createPreviewToken",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PreviewTokenDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/pages": {
-      "post": {
-        "operationId": "ContentAdminController_createPage",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreatePageDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents": {
-      "get": {
-        "operationId": "ContentAdminController_list",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents/{kind}/{key}": {
-      "get": {
-        "operationId": "ContentAdminController_get",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      },
-      "put": {
-        "operationId": "ContentAdminController_upsertDraft",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertDraftDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      },
-      "delete": {
-        "operationId": "ContentAdminController_deletePage",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents/{kind}/{key}/publish": {
-      "post": {
-        "operationId": "ContentAdminController_publish",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PublishDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents/{kind}/{key}/schedule": {
-      "post": {
-        "operationId": "ContentAdminController_schedule",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ScheduleDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents/{kind}/{key}/schedule/{versionId}": {
-      "delete": {
-        "operationId": "ContentAdminController_cancelSchedule",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "versionId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents/{kind}/{key}/discard": {
-      "post": {
-        "operationId": "ContentAdminController_discard",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents/{kind}/{key}/versions": {
-      "get": {
-        "operationId": "ContentAdminController_listVersions",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 1000,
-              "default": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "pageSize",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 25,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents/{kind}/{key}/versions/{versionId}": {
-      "get": {
-        "operationId": "ContentAdminController_getVersion",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "versionId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/admin/content/documents/{kind}/{key}/versions/{versionId}/restore": {
-      "post": {
-        "operationId": "ContentAdminController_restore",
-        "parameters": [
-          {
-            "name": "kind",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "settings",
-                "menu",
-                "template",
-                "page"
-              ]
-            }
-          },
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "versionId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentAdmin"
-        ]
-      }
-    },
-    "/api/v1/storefront/content/settings": {
-      "get": {
-        "operationId": "ContentStorefrontController_settings",
-        "parameters": [
-          {
-            "name": "preview",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 4000,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentStorefront"
-        ]
-      }
-    },
-    "/api/v1/storefront/content/menus/{key}": {
-      "get": {
-        "operationId": "ContentStorefrontController_menu",
-        "parameters": [
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "preview",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 4000,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentStorefront"
-        ]
-      }
-    },
-    "/api/v1/storefront/content/templates/{key}": {
-      "get": {
-        "operationId": "ContentStorefrontController_template",
-        "parameters": [
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "preview",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 4000,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentStorefront"
-        ]
-      }
-    },
-    "/api/v1/storefront/content/pages": {
-      "get": {
-        "operationId": "ContentStorefrontController_pages",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentStorefront"
-        ]
-      }
-    },
-    "/api/v1/storefront/content/pages/{key}": {
-      "get": {
-        "operationId": "ContentStorefrontController_page",
-        "parameters": [
-          {
-            "name": "key",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "preview",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 4000,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentStorefront"
-        ]
-      }
-    },
-    "/api/v1/storefront/content/bundle": {
-      "get": {
-        "operationId": "ContentStorefrontController_bundle",
-        "parameters": [
-          {
-            "name": "preview",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 4000,
-              "type": "string"
-            }
-          },
-          {
-            "name": "template",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": "home",
-              "type": "string",
-              "enum": [
-                "404",
-                "home",
-                "collection",
-                "product",
-                "cart",
-                "search",
-                "page"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ContentStorefront"
         ]
       }
     },
@@ -2989,6 +3137,40 @@
         ]
       }
     },
+    "/api/v1/storefront/orders/{orderNumber}/cancel": {
+      "post": {
+        "operationId": "CheckoutController_cancelOrder",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "minimum": 1,
+              "maximum": 2147483647,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "token",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{20,128}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Checkout"
+        ]
+      }
+    },
     "/webhooks/wompi": {
       "post": {
         "operationId": "WompiWebhookController_receive",
@@ -3202,6 +3384,721 @@
         },
         "tags": [
           "EmailTemplates"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/register": {
+      "post": {
+        "operationId": "CustomerAuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Register an account (always 202: does not reveal whether the email exists)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/login": {
+      "post": {
+        "operationId": "CustomerAuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerLoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Log in with email and password",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/refresh": {
+      "post": {
+        "operationId": "CustomerAuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "dept_ct": []
+          }
+        ],
+        "summary": "Rotate the refresh cookie and get a new access token",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/logout": {
+      "post": {
+        "operationId": "CustomerAuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "End this session (public: works even when the access token already expired)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/forgot-password": {
+      "post": {
+        "operationId": "CustomerAuthController_forgotPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Request a password reset link (always 202)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/reset-password": {
+      "post": {
+        "operationId": "CustomerAuthController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Set a new password with a reset token; signs out every session",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/verify-email": {
+      "post": {
+        "operationId": "CustomerAuthController_verifyEmail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Verify the email address with the emailed token; sets the given password and signs out every session",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me": {
+      "get": {
+        "operationId": "CustomersAccountController_profile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My profile",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      },
+      "patch": {
+        "operationId": "CustomersAccountController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update my profile",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      },
+      "delete": {
+        "operationId": "CustomersAccountController_deleteAccount",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete (anonymize) my account; requires my password",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/change-password": {
+      "post": {
+        "operationId": "CustomersAccountController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change my password (signs out every session)",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/addresses": {
+      "get": {
+        "operationId": "CustomersAccountController_listAddresses",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My saved addresses",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      },
+      "post": {
+        "operationId": "CustomersAccountController_createAddress",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAddressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save an address (max 10)",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/addresses/{addressId}": {
+      "patch": {
+        "operationId": "CustomersAccountController_updateAddress",
+        "parameters": [
+          {
+            "name": "addressId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAddressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a saved address",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      },
+      "delete": {
+        "operationId": "CustomersAccountController_deleteAddress",
+        "parameters": [
+          {
+            "name": "addressId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a saved address",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/orders": {
+      "get": {
+        "operationId": "CustomersAccountController_listOrders",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My orders",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/orders/{orderNumber}": {
+      "get": {
+        "operationId": "CustomersAccountController_getOrder",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "minimum": 1,
+              "maximum": 2147483647,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One of my orders",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/data-export": {
+      "post": {
+        "operationId": "CustomersAccountController_dataExport",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Download all my personal data (Habeas Data)",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/admin/customers": {
+      "get": {
+        "operationId": "CustomersAdminController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 255,
+              "type": "string"
+            }
+          },
+          {
+            "name": "acceptsMarketing",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "isActive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "tag",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List customers (search, filters, pagination)",
+        "tags": [
+          "admin-customers"
+        ]
+      }
+    },
+    "/api/v1/admin/customers/export": {
+      "get": {
+        "operationId": "CustomersAdminController_export",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 255,
+              "type": "string"
+            }
+          },
+          {
+            "name": "acceptsMarketing",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "isActive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "tag",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export customers as CSV (streamed, max 50 000 rows)",
+        "tags": [
+          "admin-customers"
+        ]
+      }
+    },
+    "/api/v1/admin/customers/{id}": {
+      "get": {
+        "operationId": "CustomersAdminController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Customer detail with orders and addresses",
+        "tags": [
+          "admin-customers"
+        ]
+      },
+      "patch": {
+        "operationId": "CustomersAdminController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUpdateCustomerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update name, phone, tags, note or active flag",
+        "tags": [
+          "admin-customers"
+        ]
+      }
+    },
+    "/api/v1/admin/customers/{id}/erase": {
+      "post": {
+        "operationId": "CustomersAdminController_erase",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Anonymize a customer (irreversible; owner/admin only)",
+        "tags": [
+          "admin-customers"
         ]
       }
     },
@@ -4163,721 +5060,6 @@
         ]
       }
     },
-    "/api/v1/storefront/customers/register": {
-      "post": {
-        "operationId": "CustomerAuthController_register",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": ""
-          }
-        },
-        "summary": "Register an account (always 202: does not reveal whether the email exists)",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/login": {
-      "post": {
-        "operationId": "CustomerAuthController_login",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CustomerLoginDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Log in with email and password",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/refresh": {
-      "post": {
-        "operationId": "CustomerAuthController_refresh",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "dept_ct": []
-          }
-        ],
-        "summary": "Rotate the refresh cookie and get a new access token",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/logout": {
-      "post": {
-        "operationId": "CustomerAuthController_logout",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "End this session (public: works even when the access token already expired)",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/forgot-password": {
-      "post": {
-        "operationId": "CustomerAuthController_forgotPassword",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ForgotPasswordDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": ""
-          }
-        },
-        "summary": "Request a password reset link (always 202)",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/reset-password": {
-      "post": {
-        "operationId": "CustomerAuthController_resetPassword",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResetPasswordDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Set a new password with a reset token; signs out every session",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/verify-email": {
-      "post": {
-        "operationId": "CustomerAuthController_verifyEmail",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyEmailDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Verify the email address with the emailed token; sets the given password and signs out every session",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me": {
-      "get": {
-        "operationId": "CustomersAccountController_profile",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "My profile",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      },
-      "patch": {
-        "operationId": "CustomersAccountController_update",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProfileDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Update my profile",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      },
-      "delete": {
-        "operationId": "CustomersAccountController_deleteAccount",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeleteAccountDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Delete (anonymize) my account; requires my password",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/change-password": {
-      "post": {
-        "operationId": "CustomersAccountController_changePassword",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CustomerChangePasswordDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Change my password (signs out every session)",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/addresses": {
-      "get": {
-        "operationId": "CustomersAccountController_listAddresses",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "My saved addresses",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      },
-      "post": {
-        "operationId": "CustomersAccountController_createAddress",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateAddressDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Save an address (max 10)",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/addresses/{addressId}": {
-      "patch": {
-        "operationId": "CustomersAccountController_updateAddress",
-        "parameters": [
-          {
-            "name": "addressId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateAddressDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Update a saved address",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      },
-      "delete": {
-        "operationId": "CustomersAccountController_deleteAddress",
-        "parameters": [
-          {
-            "name": "addressId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Delete a saved address",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/orders": {
-      "get": {
-        "operationId": "CustomersAccountController_listOrders",
-        "parameters": [
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 1000,
-              "default": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "pageSize",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 25,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "My orders",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/orders/{orderNumber}": {
-      "get": {
-        "operationId": "CustomersAccountController_getOrder",
-        "parameters": [
-          {
-            "name": "orderNumber",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "minimum": 1,
-              "maximum": 2147483647,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "One of my orders",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/data-export": {
-      "post": {
-        "operationId": "CustomersAccountController_dataExport",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Download all my personal data (Habeas Data)",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/admin/customers": {
-      "get": {
-        "operationId": "CustomersAdminController_list",
-        "parameters": [
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 1000,
-              "default": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "pageSize",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 25,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 255,
-              "type": "string"
-            }
-          },
-          {
-            "name": "acceptsMarketing",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "isActive",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "tag",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 50,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "List customers (search, filters, pagination)",
-        "tags": [
-          "admin-customers"
-        ]
-      }
-    },
-    "/api/v1/admin/customers/export": {
-      "get": {
-        "operationId": "CustomersAdminController_export",
-        "parameters": [
-          {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 255,
-              "type": "string"
-            }
-          },
-          {
-            "name": "acceptsMarketing",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "isActive",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "tag",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 50,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Export customers as CSV (streamed, max 50 000 rows)",
-        "tags": [
-          "admin-customers"
-        ]
-      }
-    },
-    "/api/v1/admin/customers/{id}": {
-      "get": {
-        "operationId": "CustomersAdminController_detail",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Customer detail with orders and addresses",
-        "tags": [
-          "admin-customers"
-        ]
-      },
-      "patch": {
-        "operationId": "CustomersAdminController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminUpdateCustomerDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Update name, phone, tags, note or active flag",
-        "tags": [
-          "admin-customers"
-        ]
-      }
-    },
-    "/api/v1/admin/customers/{id}/erase": {
-      "post": {
-        "operationId": "CustomersAdminController_erase",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Anonymize a customer (irreversible; owner/admin only)",
-        "tags": [
-          "admin-customers"
-        ]
-      }
-    },
     "/api/v1/storefront/newsletter": {
       "post": {
         "operationId": "MarketingStorefrontController_subscribe",
@@ -5789,6 +5971,123 @@
           "reason"
         ]
       },
+      "PreviewTokenDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "settings",
+              "menu",
+              "template",
+              "page"
+            ]
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$"
+          }
+        },
+        "required": [
+          "kind",
+          "key"
+        ]
+      },
+      "CreatePageDto": {
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "seoTitle": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "seoDescription": {
+            "type": "string",
+            "maxLength": 320
+          },
+          "sections": {
+            "default": [],
+            "maxItems": 40,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "handle",
+          "title"
+        ]
+      },
+      "UpsertDraftDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "PublishDto": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "ScheduleDto": {
+        "type": "object",
+        "properties": {
+          "publishAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "publishAt"
+        ]
+      },
       "CreateProductDto": {
         "type": "object",
         "properties": {
@@ -6579,6 +6878,48 @@
           "products"
         ]
       },
+      "AddCollectionMembersDto": {
+        "type": "object",
+        "properties": {
+          "productIds": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          }
+        },
+        "required": [
+          "productIds"
+        ]
+      },
+      "ReorderCollectionMemberDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          }
+        },
+        "required": [
+          "productId",
+          "position"
+        ]
+      },
       "PreviewRulesDto": {
         "type": "object",
         "properties": {
@@ -6641,113 +6982,6 @@
         },
         "required": [
           "rules"
-        ]
-      },
-      "PreviewTokenDto": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "settings",
-              "menu",
-              "template",
-              "page"
-            ]
-          },
-          "key": {
-            "type": "string",
-            "pattern": "^[a-z0-9][a-z0-9:_-]{0,119}$"
-          }
-        },
-        "required": [
-          "kind",
-          "key"
-        ]
-      },
-      "CreatePageDto": {
-        "type": "object",
-        "properties": {
-          "handle": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "seoTitle": {
-            "type": "string",
-            "maxLength": 255
-          },
-          "seoDescription": {
-            "type": "string",
-            "maxLength": 320
-          },
-          "sections": {
-            "default": [],
-            "maxItems": 40,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": {}
-            }
-          }
-        },
-        "required": [
-          "handle",
-          "title"
-        ]
-      },
-      "UpsertDraftDto": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "title": {
-            "type": "string",
-            "maxLength": 255,
-            "nullable": true
-          },
-          "version": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": [
-          "data"
-        ]
-      },
-      "PublishDto": {
-        "type": "object",
-        "properties": {
-          "note": {
-            "type": "string",
-            "maxLength": 255
-          }
-        }
-      },
-      "ScheduleDto": {
-        "type": "object",
-        "properties": {
-          "publishAt": {
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
-          },
-          "note": {
-            "type": "string",
-            "maxLength": 255
-          }
-        },
-        "required": [
-          "publishAt"
         ]
       },
       "UpdateMediaAltDto": {
@@ -7133,6 +7367,361 @@
         "required": [
           "to"
         ],
+        "additionalProperties": false
+      },
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          },
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "acceptsMarketing": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "firstName",
+          "lastName"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerLoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "ForgotPasswordDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "VerifyEmailDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{7,20}$",
+            "nullable": true
+          },
+          "acceptsMarketing": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomerChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "newPassword": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "additionalProperties": false
+      },
+      "CreateAddressDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{7,20}$"
+          },
+          "department": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "city": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "address1": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "address2": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "postalCode": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 12,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "CC",
+              "CE",
+              "NIT",
+              "PP"
+            ]
+          },
+          "documentNumber": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 20,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fullName",
+          "phone",
+          "department",
+          "city",
+          "address1"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateAddressDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{7,20}$"
+          },
+          "department": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "city": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "address1": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "address2": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "postalCode": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 12,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "CC",
+              "CE",
+              "NIT",
+              "PP"
+            ]
+          },
+          "documentNumber": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 20,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeleteAccountDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUpdateCustomerDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{7,20}$",
+            "nullable": true
+          },
+          "tags": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            }
+          },
+          "internalNote": {
+            "type": "string",
+            "maxLength": 5000,
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
         "additionalProperties": false
       },
       "OrderUpdateDto": {
@@ -7667,361 +8256,6 @@
           "ratePercent",
           "label"
         ],
-        "additionalProperties": false
-      },
-      "RegisterDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          },
-          "firstName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "lastName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "acceptsMarketing": {
-            "default": false,
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "email",
-          "password",
-          "firstName",
-          "lastName"
-        ],
-        "additionalProperties": false
-      },
-      "CustomerLoginDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "email",
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "ForgotPasswordDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "additionalProperties": false
-      },
-      "ResetPasswordDto": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "minLength": 20,
-            "maxLength": 200
-          },
-          "password": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "token",
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "VerifyEmailDto": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "minLength": 20,
-            "maxLength": 200
-          },
-          "password": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "token",
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "UpdateProfileDto": {
-        "type": "object",
-        "properties": {
-          "firstName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "lastName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "phone": {
-            "type": "string",
-            "pattern": "^\\+?[0-9]{7,20}$",
-            "nullable": true
-          },
-          "acceptsMarketing": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
-      "CustomerChangePasswordDto": {
-        "type": "object",
-        "properties": {
-          "currentPassword": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "newPassword": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "currentPassword",
-          "newPassword"
-        ],
-        "additionalProperties": false
-      },
-      "CreateAddressDto": {
-        "type": "object",
-        "properties": {
-          "fullName": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "phone": {
-            "type": "string",
-            "pattern": "^\\+?[0-9]{7,20}$"
-          },
-          "department": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 60,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "city": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 80,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "address1": {
-            "type": "string",
-            "minLength": 5,
-            "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "address2": {
-            "type": "string",
-            "minLength": 0,
-            "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "postalCode": {
-            "type": "string",
-            "minLength": 0,
-            "maxLength": 12,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "documentType": {
-            "type": "string",
-            "enum": [
-              "CC",
-              "CE",
-              "NIT",
-              "PP"
-            ]
-          },
-          "documentNumber": {
-            "type": "string",
-            "minLength": 4,
-            "maxLength": 20,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
-            "nullable": true
-          },
-          "isDefault": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "fullName",
-          "phone",
-          "department",
-          "city",
-          "address1"
-        ],
-        "additionalProperties": false
-      },
-      "UpdateAddressDto": {
-        "type": "object",
-        "properties": {
-          "fullName": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "phone": {
-            "type": "string",
-            "pattern": "^\\+?[0-9]{7,20}$"
-          },
-          "department": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 60,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "city": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 80,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "address1": {
-            "type": "string",
-            "minLength": 5,
-            "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "address2": {
-            "type": "string",
-            "minLength": 0,
-            "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "postalCode": {
-            "type": "string",
-            "minLength": 0,
-            "maxLength": 12,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "documentType": {
-            "type": "string",
-            "enum": [
-              "CC",
-              "CE",
-              "NIT",
-              "PP"
-            ]
-          },
-          "documentNumber": {
-            "type": "string",
-            "minLength": 4,
-            "maxLength": 20,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
-            "nullable": true
-          },
-          "isDefault": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
-      "DeleteAccountDto": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "AdminUpdateCustomerDto": {
-        "type": "object",
-        "properties": {
-          "firstName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "lastName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "phone": {
-            "type": "string",
-            "pattern": "^\\+?[0-9]{7,20}$",
-            "nullable": true
-          },
-          "tags": {
-            "maxItems": 50,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 50
-            }
-          },
-          "internalNote": {
-            "type": "string",
-            "maxLength": 5000,
-            "nullable": true
-          },
-          "isActive": {
-            "type": "boolean"
-          }
-        },
         "additionalProperties": false
       },
       "SubscribeNewsletterDto": {
