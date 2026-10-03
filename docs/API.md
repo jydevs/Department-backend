@@ -175,6 +175,7 @@ Global por IP (o por visitante con `X-Storefront-Key`): `THROTTLE_LIMIT` (120) p
 | `POST /storefront/checkouts` | 10 |
 | `POST /storefront/carts` | 60; el resto de `/storefront/carts/*` 120 |
 | `GET /storefront/orders/:orderNumber` | 60 |
+| `POST /storefront/orders/:orderNumber/cancel` | 10 |
 | `POST /admin/email-templates/:key/test-send` | 5 |
 | `POST /admin/maintenance/run` | 2 |
 | `/webhooks/wompi` | sin límite |
@@ -218,7 +219,11 @@ Tabla generada del código (`@Controller`/`@Get`/`@Post`…); ante duda manda `/
 | GET | `/admin/collections` · `/:id` · `/:id/metafields` | A:collections:read |
 | POST | `/admin/collections` · `/admin/collections/preview-rules` | A:collections:write |
 | PATCH · DELETE | `/admin/collections/:id` | A:collections:write |
-| PUT | `/admin/collections/:id/products` · `/:id/metafields` | A:collections:write |
+| PUT | `/admin/collections/:id/products` (reemplaza TODO el listado) · `/:id/metafields` | A:collections:write |
+| GET | `/admin/collections/:id/products` (miembros, todos los estados) | A:collections:read |
+| POST | `/admin/collections/:id/products` (añadir, idempotente) | A:collections:write |
+| PATCH | `/admin/collections/:id/products/reorder` (mover un miembro) | A:collections:write |
+| DELETE | `/admin/collections/:id/products/:productId` | A:collections:write |
 | GET | `/admin/inventory` · `/admin/inventory/adjustments` · `/admin/locations` · `/admin/locations/:id` | A:inventory:read |
 | POST | `/admin/inventory/adjust` · `/admin/locations` | A:inventory:write |
 | PATCH · DELETE | `/admin/locations/:id` | A:inventory:write |
@@ -257,6 +262,7 @@ Tabla generada del código (`@Controller`/`@Get`/`@Post`…); ante duda manda `/
 | GET | `/storefront/shipping-rates` | — |
 | POST | `/storefront/checkouts` | Idempotency-Key |
 | GET | `/storefront/orders/:orderNumber?token=…` (token del pedido) | token |
+| POST | `/storefront/orders/:orderNumber/cancel?token=…` (o `{ token }` en el cuerpo) | token |
 | POST | `/storefront/dev/mock-payment` (solo dev/CI) | — |
 
 ### Pedidos, descuentos, envíos, impuestos (admin)
@@ -319,3 +325,51 @@ Al anonimizar un cliente se guarda el sha256 del email normalizado en `erasure_s
 
 ### Mantenimiento
 `POST /admin/maintenance/run` (`settings:write`, 2/min, auditado) ejecuta la misma pasada horaria; solo una instancia a la vez (lock de sesión de Postgres). Los permisos de los roles de sistema se sincronizan con el código en cada arranque.
+
+## 11. Contratos añadidos (aditivos; no rompen a los clientes existentes)
+
+### 11.1 Listados de la tienda enriquecidos
+Aplica a los items de `GET /storefront/products`, `GET /storefront/collections/:handle` (`products.items`) y `GET /storefront/search` (`products[]`).
+Los campos anteriores (`id, handle, title, price, image, available`) no cambian; se añaden:
+
+```jsonc
+{
+  "price": 90000,                 // precio mínimo entre variantes activas (igual que antes)
+  "compareAtPrice": 120000,       // compareAtPrice de LA MISMA variante que da `price` (la más barata; empate: menor posición) o null
+  "image": { "url": "…", "alt": null, "width": null, "height": null },   // = images[0] o null
+  "images": [ { "url", "alt", "width", "height" } ],                       // primeras imágenes por posición, máx. 4 (images[1] sirve de hover)
+  "options": [ { "name": "Talla", "values": ["S", "M"] } ],               // por posición de opción y de valor
+  "variants": [                                                            // variantes ACTIVAS por posición, máx. 50
+    { "id": "uuid", "title": "S", "sku": "ABC"/null, "price": 90000, "compareAtPrice": 120000/null, "available": true,
+      "values": [ { "name": "Talla", "value": "S" } ] }                  // una entrada por opción, en el orden de `options`
+  ],
+  "available": true
+}
+```
+Misma paginación por cursor (`limit` 1-100, `cursor`), mismos filtros y `Cache-Control`. El coste en SQL son consultas por relación (productos+variantes, medios, opciones, valores de opción, disponibilidad), sin N+1. El detalle `GET /storefront/products/:handle` no cambia (sigue usando `optionValues`/`media`).
+
+### 11.2 Miembros de una colección manual (admin)
+- `GET /admin/collections/:id/products?page=&pageSize=` (`collections:read`) → `{ items, total, page, pageSize, totalPages }`; cada item: `{ id, handle, title, status: "draft"|"active"|"archived", image: {url,alt,width,height}|null, position }`, ordenado por `position`. Incluye todos los estados (los borradores no salen en la tienda). Colección inexistente: 404. En colecciones inteligentes la lista es vacía.
+- `POST /admin/collections/:id/products` (`collections:write`) cuerpo `{ productIds: uuid[1..100], position?: int>=0 }` → `200 { added: uuid[], alreadyMembers: uuid[], total }`. Idempotente: los ya miembros se informan y no se mueven. Sin `position` se añaden al final; con `position` se insertan en ese índice (en el orden dado) y el resto se reindexa a 0..n-1. Producto inexistente: 400 `PRODUCTS_NOT_FOUND` (`details.productIds`).
+- `PATCH /admin/collections/:id/products/reorder` cuerpo `{ productId, position }` → `204`. Mueve un miembro al índice `position` (se acota al último); no miembro: 404.
+- `DELETE /admin/collections/:id/products/:productId` → `204`, idempotente (si no era miembro, también 204). Reindexa las posiciones.
+- Colecciones **smart**: POST/PATCH reorder/DELETE → `409 COLLECTION_NOT_MANUAL`. `PUT /admin/collections/:id/products` sigue igual (reemplaza todo y exige colección manual).
+- Todas auditan (`collection:add_products`, `collection:remove_product`, `collection:reorder_product`) y emiten etiquetas `catalog:*` de colección (tras el commit) como el PUT.
+- La tienda ordena por `position` solo si la colección es manual con `sortOrder: "manual"`.
+
+### 11.3 `If-Match`/`version` al publicar y programar contenido
+`POST /admin/content/documents/:kind/:key/publish` y `/schedule` aceptan opcionalmente `version` (entero ≥ 1) en el cuerpo y/o la cabecera `If-Match` (el cuerpo tiene prioridad). Es la `version` del borrador que devolvió el último `GET`/`PUT`. Si se envía y no coincide: `409 CONCURRENT_UPDATE` (mismo formato que el PUT) y no se publica nada. Sin versión: comportamiento anterior.
+
+### 11.4 Cancelar un pedido pendiente (comprador)
+`POST /storefront/orders/:orderNumber/cancel` — público, límite 10/min. Credencial: `?token=<accessToken>` o `{ "token": "…" }` en el cuerpo (sin ella: 400 `TOKEN_REQUIRED`). Cabecera `Authorization` de cliente opcional (solo cambia el actor del evento a `customer`; sin ella el actor es `guest`). Sin cuerpo necesario.
+- Respuesta `200` = mismo objeto que `GET /storefront/orders/:orderNumber` (con `status: "cancelled"`, `paymentStatus: "failed"`, `reservedUntil: null`).
+- `404 NOT_FOUND`: pedido inexistente o token incorrecto. `409 ORDER_NOT_CANCELLABLE` (`details: { status, paymentStatus }`): el pedido no está `pending` o ya tiene pago confirmado (pagado, expirado, enviado…).
+- Idempotente: un pedido ya cancelado responde 200 con su estado.
+- Efectos (una transacción): libera las reservas de stock y el uso del descuento (misma lógica que expirar/cancelar desde el admin), pasa la fila de pago a `voided` (`CANCELLED_BY_CUSTOMER`), registra el evento `order.cancelled` con `actorType` `guest`/`customer`, envía el correo `order_cancelled` y emite las etiquetas `catalog:*` (el stock vuelve a la tienda).
+- **Pago tardío (decisión de seguridad)**: la API NO puede anular una transacción abierta en Wompi. Si después llega un webhook `APPROVED` para un pedido cancelado, el pedido **no revive**: sigue `cancelled`, el stock no se reserva de nuevo, el pago se registra `approved`, `paymentStatus` pasa a `paid`, se añade la etiqueta `refund-pending` y el evento `payment.late_approval` (resultado `late_approval`) para que el personal reembolse. Los `DECLINED/ERROR/VOIDED` posteriores se ignoran (`payment.status_ignored`).
+- El front debe cancelar solo mientras `status === "pending"` y avisar al comprador de que, si ya abrió Wompi, no complete el pago.
+
+### 11.5 `redirectUrl` del pago y enlace del correo
+- `payment.redirectUrl` (Wompi y también el mock) es ahora `{STOREFRONT_URL}/checkout/result?order=<orderNumber>`: lleva el **número de pedido, nunca el token**. Wompi añade además su propio `?id=<transacción>` (y `env`). El front usa el `accessToken` que guardó al crear el pedido (cookie/almacenamiento) para `GET /storefront/orders/:orderNumber?token=…`; si no lo tiene (otro navegador o dispositivo), debe mostrar instrucciones para consultar el pedido desde el enlace del correo de confirmación.
+- El correo `order_confirmation` (se envía al aprobarse el pago) ahora trae en `orderUrl` el enlace `{STOREFRONT_URL}/orders/<number>?token=<linkToken>`. `linkToken` NO es el `accessToken` del checkout (que la API solo conoce con hash): es un HMAC sin estado derivado del pedido y de `JWT_ACCESS_SECRET`. Se acepta en `GET /storefront/orders/:orderNumber` y en `…/cancel` igual que el `accessToken`; rotar `JWT_ACCESS_SECRET` invalida los enlaces de correos ya enviados. La variable de plantilla sigue siendo `orderUrl` (no hay variables nuevas ni cambios de seed: la plantilla por defecto ya usa `{{ orderUrl }}`). Los demás correos (envío, cancelación, reembolso) siguen sin token.
+- Nota operativa: el cuerpo renderizado del correo (con el enlace) se guarda en `email_outbox`, igual que los demás correos con enlaces; el log de correo en desarrollo oculta `token=`.
