@@ -90,7 +90,8 @@ Muestra `message` al usuario solo si tu UI lo necesita; ramifica siempre por `co
 ## 5. Idempotencia y concurrencia
 
 - **`POST /storefront/checkouts` exige `Idempotency-Key`** (8-120 caracteres visibles, p. ej. un UUID generado al abrir el checkout). Repetir la misma petición con la misma clave devuelve la misma respuesta (el `accessToken` del pedido se rota); la misma clave con otro cuerpo da 422 `IDEMPOTENCY_KEY_REUSED`; mientras se procesa, 409 `IDEMPOTENCY_IN_PROGRESS`. Las claves se conservan 7 días.
-- **Bloqueo optimista**: los documentos de contenido y varias entidades llevan `version`. Envía `If-Match: "3"` (o `version` en el cuerpo) al hacer `PUT`; si cambió, 409 `CONCURRENT_UPDATE`/conflicto: recarga y reaplica.
+- **`POST /storefront/checkouts` acepta opcionalmente `Authorization: Bearer <access token de cliente>`**: con sesión válida el pedido se asigna al cliente (`customerId`) y aparece en `/storefront/customers/me/orders` aunque el correo del pedido sea otro. Sin cabecera, o con un token inválido, caducado o de personal, la compra **sigue como invitado** (nunca se rechaza por el token; el access token dura 15 min, renuévalo antes con `/customers/refresh`). Un pedido de invitado se vincula después a la cuenta cuyo correo, ya **verificado**, coincide (al verificar el correo, al restablecer la contraseña y en cada login).
+- **Bloqueo optimista**: los documentos de contenido y varias entidades llevan `version` (también cada variante en `GET /admin/products/:id`, que es la `version` que exige `PATCH /admin/products/:id/variants/:variantId`). Envía `If-Match: "3"` (o `version` en el cuerpo) al hacer `PUT`; si cambió, 409 `CONCURRENT_UPDATE`/conflicto: recarga y reaplica.
 - Los webhooks de pago son idempotentes (se descartan eventos ya procesados; la tabla se purga a los 90 días).
 
 ## 6. Cabeceras clave
@@ -118,11 +119,23 @@ En desarrollo, con `MOCK_PAYMENTS_ENABLED=true` y `PAYMENT_PROVIDER=mock`, `POST
 3. En modo borrador, el front pide `GET /storefront/content/{settings|menus/:key|templates/:key|pages/:key}?preview=<token>` (sin `Cache-Control` público). `/storefront/content/bundle` **no** admite `preview`.
 
 ### Revalidación (saliente: la API llama al front)
-Tras publicar/programar/restaurar contenido, la API hace `POST {STOREFRONT_URL}/api/revalidate` (2 intentos, timeout 3 s, nunca bloquea la publicación). **El front debe implementar esa ruta**:
+Tras publicar/programar/restaurar contenido (y tras cambios de catálogo, ver abajo), la API hace `POST {STOREFRONT_URL}/api/revalidate` (3 intentos con espera creciente, timeout 3 s, nunca bloquea la petición del admin). **El front debe implementar esa ruta**:
 
 - Cuerpo JSON (texto exacto): `{ "tags": ["…"], "ts": 1712345678901 }` (`ts` en ms epoch, va dentro del cuerpo firmado).
 - Cabecera `x-signature` = HMAC-SHA256 en hexadecimal del **cuerpo crudo** con `STOREFRONT_REVALIDATE_SECRET` (el mismo valor en API y front).
 - El front debe: (1) leer el cuerpo **crudo** (`await req.text()`), (2) recalcular el HMAC y comparar en tiempo constante (`crypto.timingSafeEqual`), (3) rechazar si `|Date.now() - ts|` supera ~5 minutos (anti-replay), (4) validar que `tags` sea un arreglo de cadenas cortas, (5) llamar `revalidateTag` por cada etiqueta y responder 200. Cualquier fallo → 401 sin detalles.
+
+**Etiquetas de catálogo.** Tras confirmarse la transacción (nunca antes, nunca en un rollback), los cambios de productos, variantes, opciones, medios, stock/disponibilidad (ajustes de inventario, reservas y liberaciones de pedidos, activar/desactivar ubicaciones), colecciones (datos, miembros, reglas, publicación), metafields, medios de la biblioteca en uso e importaciones de productos se agrupan 1,5 s y se envían como un lote deduplicado (se parte en llamadas de ≤50 etiquetas de ≤100 caracteres):
+
+| Etiqueta | Cuándo |
+| --- | --- |
+| `catalog` | siempre que cambie algo del catálogo |
+| `catalog:products` | cualquier cambio de producto/variante/stock |
+| `catalog:product:<handle>` | el producto afectado (si cambió el handle, también el anterior; al borrar, el borrado) |
+| `catalog:collections` | cualquier cambio de colección (o borrar un producto que estaba en colecciones) |
+| `catalog:collection:<handle>` | la colección afectada (también su handle anterior) |
+
+Los impuestos (`/admin/taxes`) no emiten etiquetas de catálogo: el catálogo público no incluye impuestos (se calculan en carrito/checkout, que no se cachea).
 
 ```ts
 // app/api/revalidate/route.ts (referencia)
