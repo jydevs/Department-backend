@@ -1,3 +1,4 @@
+import { AUTH_THROTTLE_LIMIT } from "../../common/throttle/auth-throttle";
 import { Body, Controller, Post, Get, Res, Req, Inject } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { Throttle } from "@nestjs/throttler";
@@ -40,7 +41,7 @@ export class AuthController {
    */
   @Post("login")
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: 60_000 } })
   @ApiOperation({ summary: "Login with email and password" })
   async login(
     @Body() dto: LoginRequestDto,
