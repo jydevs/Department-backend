@@ -58,6 +58,8 @@ const schema = z
     DOCS_ENABLED: z.enum(["true", "false", "1", "0"]).optional(),
 
     THROTTLE_TTL_MS: z.coerce.number().int().min(1000).default(60_000),
+    /** dev only: login attempts/min/IP (read at import time by the controllers); production must keep 5 */
+    AUTH_THROTTLE_LIMIT: z.coerce.number().int().min(1).max(1000).optional(),
     THROTTLE_LIMIT: z.coerce.number().int().min(1).default(120),
 
     /** injected by CI / deploy, shown by /version */
@@ -133,6 +135,7 @@ const schema = z
     for (const origin of env.CORS_ORIGINS) {
       if (!origin.startsWith("https://")) issue("CORS_ORIGINS", `"${origin}" must be https:// in production`);
     }
+    if (env.AUTH_THROTTLE_LIMIT !== undefined && env.AUTH_THROTTLE_LIMIT !== 5) issue("AUTH_THROTTLE_LIMIT", "must be unset (or 5) in production");
     if (env.MOCK_PAYMENTS_ENABLED) issue("MOCK_PAYMENTS_ENABLED", "must be false in production");
     if (env.MAIL_TRANSPORT !== "smtp") issue("MAIL_TRANSPORT", "must be smtp in production");
     if (!env.SMTP_URL) issue("SMTP_URL", "is required in production");
