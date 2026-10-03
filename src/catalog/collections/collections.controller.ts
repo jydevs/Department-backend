@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Put, Param, Body, Query } from "@nestjs/common";
+import { Controller, Get, Post, Patch, Delete, Put, Param, Body, Query, HttpCode } from "@nestjs/common";
 import { CollectionsService } from "./collections.service";
 import { RequirePermissions } from "../../common/auth/decorators";
 import { PageQueryDto, toOffsetPage, OffsetPage } from "../../common/pagination/pagination";
@@ -10,6 +10,11 @@ import {
   CollectionDto,
   UpdateCollectionProductsDto,
   PreviewRulesDto,
+  AddCollectionMembersDto,
+  ReorderCollectionMemberDto,
+  CollectionMemberParamDto,
+  CollectionMember,
+  CollectionMembersAddResult,
   PreviewRulesResponseDto,
 } from "./dto";
 
@@ -57,6 +62,32 @@ export class CollectionsController {
   @RequirePermissions("collections:write")
   async updateProducts(@Param() { id }: IdParamDto, @Body() input: UpdateCollectionProductsDto): Promise<void> {
     await this.collectionsService.updateProducts(id, input);
+  }
+
+  @Get(":id/products")
+  @RequirePermissions("collections:read")
+  async listMembers(@Param() { id }: IdParamDto, @Query() query: PageQueryDto): Promise<OffsetPage<CollectionMember>> {
+    return this.collectionsService.listMembers(id, query.page, query.pageSize);
+  }
+
+  @Post(":id/products")
+  @RequirePermissions("collections:write")
+  async addMembers(@Param() { id }: IdParamDto, @Body() input: AddCollectionMembersDto): Promise<CollectionMembersAddResult> {
+    return this.collectionsService.addMembers(id, input);
+  }
+
+  @Patch(":id/products/reorder")
+  @HttpCode(204)
+  @RequirePermissions("collections:write")
+  async reorderMember(@Param() { id }: IdParamDto, @Body() input: ReorderCollectionMemberDto): Promise<void> {
+    await this.collectionsService.reorderMember(id, input);
+  }
+
+  @Delete(":id/products/:productId")
+  @HttpCode(204)
+  @RequirePermissions("collections:write")
+  async removeMember(@Param() { id, productId }: CollectionMemberParamDto): Promise<void> {
+    await this.collectionsService.removeMember(id, productId);
   }
 
   @Post("preview-rules")

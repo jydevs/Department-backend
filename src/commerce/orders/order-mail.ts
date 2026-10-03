@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import type { EntityManager } from "typeorm";
 
 const MAX_SUMMARY = 500;
@@ -24,9 +25,23 @@ export function itemsSummary(lines: { quantity: number; title: string; variantTi
   return text.length <= MAX_SUMMARY ? text : `${text.slice(0, MAX_SUMMARY - 1)}…`;
 }
 
-/** Public order link. Never carries the accessToken. */
-export function orderUrl(storefrontUrl: string, orderNumber: number): string {
-  return `${storefrontUrl.replace(/\/+$/, "")}/orders/${orderNumber}`;
+/**
+ * Public order link. Without `linkToken` it carries no credential (shipping/refund/cancel mails).
+ * With it (order confirmation) the link opens the order directly: `/orders/<number>?token=<linkToken>`.
+ */
+export function orderUrl(storefrontUrl: string, orderNumber: number, linkToken?: string): string {
+  const base = `${storefrontUrl.replace(/\/+$/, "")}/orders/${orderNumber}`;
+  return linkToken ? `${base}?token=${encodeURIComponent(linkToken)}` : base;
+}
+
+/**
+ * Credential for the e-mail link. The checkout `accessToken` is only known (in plaintext) to the buyer's browser, so the
+ * confirmation mail (sent when the payment is approved) uses a second, stateless credential: HMAC-SHA256 of the order id
+ * under the server secret (domain separated). It is accepted wherever the accessToken is (see `order-access.ts`).
+ */
+export function orderLinkToken(secret: string | undefined, orderId: string): string {
+  // JWT_ACCESS_SECRET is mandatory in production (env validation); the fallback only exists for local development.
+  return createHmac("sha256", secret ?? "dev-only-order-link-secret").update(`order-link:v1:${orderId}`).digest("base64url");
 }
 
 export function orderNumberLabel(orderNumber: number): string {

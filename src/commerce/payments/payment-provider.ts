@@ -4,6 +4,13 @@ import type { Order } from "../entities";
 /** Injection token: `@Inject(PAYMENT_PROVIDER) provider: PaymentProvider`. */
 export const PAYMENT_PROVIDER = Symbol("PAYMENT_PROVIDER");
 
+/** Where the gateway sends the buyer back: `{STOREFRONT_URL}/checkout/result?order=<number>` (never the access token). */
+export function checkoutResultUrl(storefrontUrl: string, orderNumber: number): string {
+  const url = new URL("/checkout/result", storefrontUrl);
+  url.searchParams.set("order", String(orderNumber));
+  return url.toString();
+}
+
 export type PaymentProviderName = "wompi" | "mock";
 
 export interface PaymentInstructions {

@@ -44,6 +44,10 @@ const SORTS: Record<SortKey, SortSpec> = {
   manual: { expr: "cp.position", dir: "ASC", kind: "number" },
 };
 
+/** Bounds for the enriched list items (keeps list payloads small). */
+const SUMMARY_MAX_VARIANTS = 50;
+const SUMMARY_MAX_IMAGES = 4;
+
 const CAST: Record<SortSpec["kind"], string> = { date: "timestamptz", number: "bigint", text: "text" };
 
 const productCursorSchema = z.object({
@@ -364,7 +368,10 @@ export class StorefrontService {
     return { ids: pageRows.map((r) => r.id), hasMore, nextCursor };
   }
 
-  /** Step (c): load the page's products with variants + first media, keep the SQL order. */
+  /**
+   * Step (c): load the page's products with variants, options and media (one query per relation, no N+1),
+   * keeping the SQL order. Each summary carries enough data to render a card without fetching the detail.
+   */
   private async loadSummaries(ids: string[]): Promise<StorefrontProductSummary[]> {
     if (ids.length === 0) return [];
 
@@ -376,14 +383,42 @@ export class StorefrontService {
       relations: { media: true },
       order: { position: "ASC", id: "ASC" },
     });
-    const imageByProduct = new Map<string, StorefrontImage>();
+    const imagesByProduct = new Map<string, StorefrontImage[]>();
     for (const pm of media) {
-      if (pm.media && !imageByProduct.has(pm.productId)) {
-        imageByProduct.set(pm.productId, this.toImage(pm.media));
+      if (!pm.media) continue;
+      const list = imagesByProduct.get(pm.productId) ?? [];
+      if (list.length < SUMMARY_MAX_IMAGES) {
+        list.push(this.toImage(pm.media));
+        imagesByProduct.set(pm.productId, list);
       }
     }
 
-    const activeVariants = (p: Product) => (p.variants ?? []).filter((v) => v.isActive);
+    const options = await this.optionRepository.find({
+      where: { productId: In(ids) },
+      order: { position: "ASC", id: "ASC" },
+    });
+    const optionValues = options.length
+      ? await this.optionValueRepository.find({
+          where: { optionId: In(options.map((o) => o.id)) },
+          order: { position: "ASC", id: "ASC" },
+        })
+      : [];
+    const valuesByOption = new Map<string, ProductOptionValue[]>();
+    for (const ov of optionValues) {
+      const list = valuesByOption.get(ov.optionId) ?? [];
+      list.push(ov);
+      valuesByOption.set(ov.optionId, list);
+    }
+    const optionsByProduct = new Map<string, ProductOption[]>();
+    for (const o of options) {
+      const list = optionsByProduct.get(o.productId) ?? [];
+      list.push(o);
+      optionsByProduct.set(o.productId, list);
+    }
+    const valueById = new Map(optionValues.map((ov) => [ov.id, ov]));
+
+    const activeVariants = (p: Product) =>
+      (p.variants ?? []).filter((v) => v.isActive).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
     const availability = await this.getAvailabilityMap(products.flatMap((p) => activeVariants(p).map((v) => v.id)));
 
     const summaries: StorefrontProductSummary[] = [];
@@ -391,12 +426,32 @@ export class StorefrontService {
       const p = byId.get(id);
       if (!p) continue;
       const variants = activeVariants(p);
+      const images = imagesByProduct.get(p.id) ?? [];
+      // The displayed price comes from the cheapest active variant (ties: lowest position); compareAtPrice from that same variant.
+      const cheapest = variants.reduce<Variant | null>((best, v) => (best === null || v.price < best.price ? v : best), null);
+      const productOptions = optionsByProduct.get(p.id) ?? [];
       summaries.push({
         id: p.id,
         handle: p.handle,
         title: p.title,
-        price: variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : 0,
-        image: imageByProduct.get(p.id) ?? null,
+        price: cheapest ? cheapest.price : 0,
+        compareAtPrice: cheapest?.compareAtPrice ?? null,
+        image: images[0] ?? null,
+        images,
+        options: productOptions.map((o) => ({ name: o.name, values: (valuesByOption.get(o.id) ?? []).map((ov) => ov.value) })),
+        variants: variants.slice(0, SUMMARY_MAX_VARIANTS).map((v) => ({
+          id: v.id,
+          title: v.title,
+          sku: v.sku ?? null,
+          price: v.price,
+          compareAtPrice: v.compareAtPrice ?? null,
+          available: availability.get(v.id) === true,
+          values: (v.optionValueIds ?? []).flatMap((ovId) => {
+            const ov = valueById.get(ovId);
+            const option = ov ? productOptions.find((o) => o.id === ov.optionId) : undefined;
+            return ov && option ? [{ name: option.name, value: ov.value }] : [];
+          }),
+        })),
         available: variants.some((v) => availability.get(v.id) === true),
       });
     }

@@ -4,3 +4,4 @@ export { CollectionCreateInput, CreateCollectionDto } from "./collection-create.
 export { CollectionUpdateInput, UpdateCollectionDto } from "./collection-update.dto";
 export { CollectionProductsUpdateInput, UpdateCollectionProductsDto } from "./collection-products-update.dto";
 export { PreviewRulesInput, PreviewRulesResponse, PreviewRulesDto, PreviewRulesResponseDto } from "./preview-rules.dto";
+export * from "./collection-members.dto";

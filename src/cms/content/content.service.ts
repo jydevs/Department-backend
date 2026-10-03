@@ -278,11 +278,12 @@ export class ContentService {
 
   /* ── publish / schedule ────────────────────────────────── */
 
-  async publish(kind: ContentKind, key: string, note: string | undefined, actorId: string | null): Promise<DocumentDetailDto> {
+  async publish(kind: ContentKind, key: string, note: string | undefined, actorId: string | null, expectedVersion?: number): Promise<DocumentDetailDto> {
     const now = this.clock.now();
     await this.tx.run(async (manager) => {
       const id = await this.lockDocument(manager, kind, key);
       const doc = await manager.findOneByOrFail(ContentDocument, { id });
+      this.assertExpectedVersion(doc, expectedVersion);
       const parsed = parseDocument(kind, key, doc.draft);
       if (!parsed.ok) throw validationError(parsed.issues);
       const current = await this.publishedVersion(manager, doc);
@@ -318,7 +319,7 @@ export class ContentService {
     return this.get(kind, key);
   }
 
-  async schedule(kind: ContentKind, key: string, publishAtIso: string, note: string | undefined, actorId: string | null): Promise<VersionSummaryDto> {
+  async schedule(kind: ContentKind, key: string, publishAtIso: string, note: string | undefined, actorId: string | null, expectedVersion?: number): Promise<VersionSummaryDto> {
     const now = this.clock.now();
     const publishAt = new Date(publishAtIso);
     if (publishAt.getTime() <= now.getTime()) {
@@ -330,6 +331,7 @@ export class ContentService {
     return this.tx.run(async (manager) => {
       const id = await this.lockDocument(manager, kind, key);
       const doc = await manager.findOneByOrFail(ContentDocument, { id });
+      this.assertExpectedVersion(doc, expectedVersion);
       const parsed = parseDocument(kind, key, doc.draft);
       if (!parsed.ok) throw validationError(parsed.issues);
       const number = await this.nextNumber(manager, id);
@@ -427,6 +429,13 @@ export class ContentService {
   }
 
   /* ── internals ─────────────────────────────────────────── */
+
+  /** Optional optimistic lock for publish/schedule: same 409 as the draft PUT when the draft moved on. */
+  private assertExpectedVersion(doc: ContentDocument, expected: number | undefined): void {
+    if (expected !== undefined && doc.version !== expected) {
+      throw AppException.conflict("CONCURRENT_UPDATE", "The document was modified by someone else, reload and retry");
+    }
+  }
 
   private async requireDocument(manager: EntityManager, kind: ContentKind, key: string): Promise<ContentDocument> {
     const doc = await manager.findOne(ContentDocument, { where: { kind, key } });

@@ -1,8 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, In, QueryFailedError, Repository } from "typeorm";
+import { DataSource, EntityManager, In, QueryFailedError, Repository } from "typeorm";
 import { v7 as uuidv7 } from "uuid";
 import { Collection, CollectionProduct, Product } from "../../catalog/entities";
+import { OffsetPage, toOffsetPage } from "../../common/pagination/pagination";
 import { AppException } from "../../common/errors/app-exception";
 import { sanitizeRichText } from "../../common/html/sanitize";
 import { SqlParams } from "../../common/sql/sql-params";
@@ -16,6 +17,10 @@ import {
   CollectionDto,
   PreviewRulesInput,
   PreviewRulesResponseDto,
+  CollectionMember,
+  CollectionMembersAddInput,
+  CollectionMembersAddResult,
+  CollectionMemberReorderInput,
 } from "./dto";
 import { buildSmartRulesCondition } from "./smart-rules";
 
@@ -265,6 +270,179 @@ export class CollectionsService {
       );
       this.cache.collectionsChanged(manager, { collectionIds: [collectionId] });
     });
+  }
+
+  /** Members of a manual collection in every status (draft/active/archived), ordered by position. */
+  async listMembers(collectionId: string, page: number, pageSize: number): Promise<OffsetPage<CollectionMember>> {
+    const collection = await this.collectionRepository.findOne({ where: { id: collectionId }, select: { id: true } });
+    if (!collection) {
+      throw AppException.notFound("Collection");
+    }
+    const totalRows: { total: number }[] = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM collection_products cp JOIN products p ON p.id = cp.product_id
+       WHERE cp.collection_id = $1 AND p.deleted_at IS NULL`,
+      [collectionId],
+    );
+    const rows: {
+      id: string;
+      handle: string;
+      title: string;
+      status: string;
+      position: number;
+      url: string | null;
+      alt: string | null;
+      width: number | null;
+      height: number | null;
+    }[] = await this.dataSource.query(
+      `SELECT p.id, p.handle, p.title, p.status, cp.position, m.url, m.alt, m.width, m.height
+       FROM collection_products cp
+       JOIN products p ON p.id = cp.product_id AND p.deleted_at IS NULL
+       LEFT JOIN LATERAL (
+         SELECT md.url, md.alt, md.width, md.height
+         FROM product_media pm JOIN media md ON md.id = pm.media_id
+         WHERE pm.product_id = p.id
+         ORDER BY pm.position ASC, pm.id ASC LIMIT 1
+       ) m ON true
+       WHERE cp.collection_id = $1
+       ORDER BY cp.position ASC, cp.id ASC
+       LIMIT $2 OFFSET $3`,
+      [collectionId, pageSize, (page - 1) * pageSize],
+    );
+    const items = rows.map((r) => ({
+      id: r.id,
+      handle: r.handle,
+      title: r.title,
+      status: r.status,
+      image: r.url ? { url: r.url, alt: r.alt ?? null, width: r.width ?? null, height: r.height ?? null } : null,
+      position: Number(r.position),
+    }));
+    return toOffsetPage(items, totalRows[0]?.total ?? 0, page, pageSize);
+  }
+
+  /** Idempotent: products that are already members are reported and left where they are. */
+  async addMembers(collectionId: string, input: CollectionMembersAddInput): Promise<CollectionMembersAddResult> {
+    return this.transactionService.run(async (manager) => {
+      const collection = await this.lockManualCollection(manager, collectionId);
+
+      const requested = [...new Set(input.productIds)];
+      const found = await manager.getRepository(Product).find({ where: { id: In(requested) }, select: { id: true } });
+      const foundIds = new Set(found.map((p) => p.id));
+      const missing = requested.filter((id) => !foundIds.has(id));
+      if (missing.length > 0) {
+        throw AppException.badRequest("PRODUCTS_NOT_FOUND", "Some products do not exist", { productIds: missing });
+      }
+
+      const current = await this.memberIds(manager, collection.id);
+      const currentSet = new Set(current);
+      const added = requested.filter((id) => !currentSet.has(id));
+      const alreadyMembers = requested.filter((id) => currentSet.has(id));
+
+      if (added.length > 0) {
+        const at = Math.min(input.position ?? current.length, current.length);
+        const ordered = [...current.slice(0, at), ...added, ...current.slice(at)];
+        await manager.getRepository(CollectionProduct).insert(
+          added.map((productId) => ({ id: uuidv7(), collectionId: collection.id, productId, position: ordered.indexOf(productId) })),
+        );
+        await this.writePositions(manager, collection.id, ordered);
+
+        await this.auditService.record(
+          {
+            action: "collection:add_products",
+            entityType: "Collection",
+            entityId: collection.id,
+            diff: { added, position: input.position ?? null },
+          },
+          manager,
+        );
+        this.cache.collectionsChanged(manager, { collectionIds: [collection.id] });
+      }
+      return { added, alreadyMembers, total: current.length + added.length };
+    });
+  }
+
+  /** Idempotent: removing a product that is not a member is a no-op (204). */
+  async removeMember(collectionId: string, productId: string): Promise<void> {
+    return this.transactionService.run(async (manager) => {
+      const collection = await this.lockManualCollection(manager, collectionId);
+      const result = await manager.getRepository(CollectionProduct).delete({ collectionId: collection.id, productId });
+      if ((result.affected ?? 0) === 0) return;
+
+      await this.writePositions(manager, collection.id, await this.memberIds(manager, collection.id));
+      await this.auditService.record(
+        {
+          action: "collection:remove_product",
+          entityType: "Collection",
+          entityId: collection.id,
+          diff: { productId },
+        },
+        manager,
+      );
+      this.cache.collectionsChanged(manager, { collectionIds: [collection.id] });
+    });
+  }
+
+  /** Move one member to a new 0-based index; the rest keep their relative order. */
+  async reorderMember(collectionId: string, input: CollectionMemberReorderInput): Promise<void> {
+    return this.transactionService.run(async (manager) => {
+      const collection = await this.lockManualCollection(manager, collectionId);
+      const current = await this.memberIds(manager, collection.id);
+      const from = current.indexOf(input.productId);
+      if (from === -1) {
+        throw AppException.notFound("Product");
+      }
+      const rest = current.filter((id) => id !== input.productId);
+      const to = Math.min(input.position, rest.length);
+      const ordered = [...rest.slice(0, to), input.productId, ...rest.slice(to)];
+      if (ordered.every((id, i) => id === current[i])) return;
+
+      await this.writePositions(manager, collection.id, ordered);
+      await this.auditService.record(
+        {
+          action: "collection:reorder_product",
+          entityType: "Collection",
+          entityId: collection.id,
+          diff: { productId: input.productId, from, to },
+        },
+        manager,
+      );
+      this.cache.collectionsChanged(manager, { collectionIds: [collection.id] });
+    });
+  }
+
+  /** Row lock serialises concurrent membership edits; smart collections are rejected with a clear error. */
+  private async lockManualCollection(manager: EntityManager, id: string): Promise<Collection> {
+    const collection = await manager
+      .getRepository(Collection)
+      .createQueryBuilder("c")
+      .setLock("pessimistic_write")
+      .where("c.id = :id", { id })
+      .getOne();
+    if (!collection) {
+      throw AppException.notFound("Collection");
+    }
+    if (collection.type !== "manual") {
+      throw AppException.conflict("COLLECTION_NOT_MANUAL", "Products can only be edited on manual collections; smart collections are rule-based");
+    }
+    return collection;
+  }
+
+  private async memberIds(manager: EntityManager, collectionId: string): Promise<string[]> {
+    const rows: { product_id: string }[] = await manager.query(
+      "SELECT product_id FROM collection_products WHERE collection_id = $1 ORDER BY position ASC, id ASC",
+      [collectionId],
+    );
+    return rows.map((r) => r.product_id);
+  }
+
+  /** Rewrite positions as 0..n-1 following `ordered` (one statement). */
+  private async writePositions(manager: EntityManager, collectionId: string, ordered: string[]): Promise<void> {
+    if (ordered.length === 0) return;
+    await manager.query(
+      `UPDATE collection_products cp SET position = v.pos
+       FROM unnest($1::uuid[], $2::int[]) AS v(product_id, pos)
+       WHERE cp.collection_id = $3 AND cp.product_id = v.product_id AND cp.position IS DISTINCT FROM v.pos`,
+      [ordered, ordered.map((_, i) => i), collectionId],
+    );
   }
 
   async previewRules(input: PreviewRulesInput, limit: number = 24): Promise<PreviewRulesResponseDto> {

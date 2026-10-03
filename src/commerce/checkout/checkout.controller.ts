@@ -4,7 +4,9 @@ import { Public } from "../../common/auth/decorators";
 import { AppException } from "../../common/errors/app-exception";
 import { CustomerSessionService } from "../../customers/auth/customer-auth.guard";
 import {
+  CancelOrderBodyDto,
   CheckoutDto,
+  OptionalOrderTokenQueryDto,
   CheckoutResponseDto,
   OrderNumberParamDto,
   OrderTokenQueryDto,
@@ -47,5 +49,22 @@ export class CheckoutController {
   @Header("Cache-Control", "private, no-store")
   async getOrder(@Param() { orderNumber }: OrderNumberParamDto, @Query() { token }: OrderTokenQueryDto): Promise<PublicOrderDto> {
     return this.checkout.getPublicOrder(orderNumber, token);
+  }
+
+  /** Buyer cancels a pending, unpaid order. Token in `?token=` or in the body `{ token }`. */
+  @Post("orders/:orderNumber/cancel")
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Header("Cache-Control", "private, no-store")
+  async cancelOrder(
+    @Param() { orderNumber }: OrderNumberParamDto,
+    @Query() query: OptionalOrderTokenQueryDto,
+    @Body() body: CancelOrderBodyDto | undefined,
+    @Headers("authorization") authorization: string | undefined,
+  ): Promise<PublicOrderDto> {
+    const token = query.token ?? body?.token;
+    if (!token) throw AppException.badRequest("TOKEN_REQUIRED", "The order token is required (query ?token= or body { token })");
+    const customerId = await this.sessions.resolve(authorization);
+    return this.checkout.cancelPublicOrder(orderNumber, token, customerId);
   }
 }

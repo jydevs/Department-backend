@@ -16,6 +16,7 @@ import {
   OrderLine,
   Payment,
 } from "../entities";
+import { OrdersLifecycleModule } from "../orders/orders-lifecycle.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { CheckoutController } from "./checkout.controller";
@@ -40,6 +41,7 @@ import { CheckoutService } from "./checkout.service";
     PricingModule,
     AuditModule,
     PaymentsModule,
+    OrdersLifecycleModule,
     CustomersModule,
   ],
   providers: [CheckoutService],

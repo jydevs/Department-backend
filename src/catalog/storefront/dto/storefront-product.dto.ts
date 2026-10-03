@@ -69,12 +69,32 @@ const storefrontProductDetailsSchema = z.object({
 export type StorefrontProductDetails = z.infer<typeof storefrontProductDetailsSchema>;
 export class StorefrontProductDetailsDto extends createZodDto(storefrontProductDetailsSchema) {}
 
+const storefrontSummaryVariantSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  /** One entry per option, in the order of the product `options`. */
+  values: z.array(z.object({ name: z.string(), value: z.string() })),
+  price: z.number(),
+  compareAtPrice: z.number().nullable(),
+  available: z.boolean(),
+  sku: z.string().nullable(),
+});
+
 const storefrontProductSummarySchema = z.object({
   id: z.string().uuid(),
   handle: z.string(),
   title: z.string(),
+  /** Lowest active-variant price. */
   price: z.number(),
+  /** compareAtPrice of the same variant that gives `price`. */
+  compareAtPrice: z.number().nullable(),
+  /** First image (same as images[0]). */
   image: storefrontImageSchema.nullable(),
+  /** First images by position (max 4). */
+  images: z.array(storefrontImageSchema),
+  options: z.array(z.object({ name: z.string(), values: z.array(z.string()) })),
+  /** Active variants by position (max 50). */
+  variants: z.array(storefrontSummaryVariantSchema),
   available: z.boolean(),
 });
 
