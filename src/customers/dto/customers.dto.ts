@@ -124,6 +124,7 @@ export interface CustomerProfileDto {
   phone: string | null;
   acceptsMarketing: boolean;
   emailVerified: boolean;
+  isStaff?: boolean;
   createdAt: Date;
 }
 

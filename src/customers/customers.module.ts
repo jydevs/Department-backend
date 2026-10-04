@@ -18,12 +18,15 @@ import { CustomersAdminController } from "./customers-admin.controller";
 import { CustomersAdminService } from "./customers-admin.service";
 import { Customer, CustomerAddress, CustomerRefreshToken, CustomerToken } from "./entities";
 
+import { AuthModule } from "../identity/auth/auth.module";
+
 /** Storefront customer accounts (auth, self-service, Habeas Data) and the admin customer directory. */
 @Module({
   imports: [
     TypeOrmModule.forFeature([Customer, CustomerAddress, CustomerRefreshToken, CustomerToken, Order, OrderLine, Fulfillment]),
     DatabaseModule,
     MailModule,
+    AuthModule,
   ],
   controllers: [CustomerAuthController, CustomersAccountController, CustomersAdminController],
   providers: [
