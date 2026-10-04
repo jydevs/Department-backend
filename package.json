@@ -23,6 +23,7 @@
     "smoke": "node scripts/smoke.mjs",
     "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
     "owner:create": "ts-node -r tsconfig-paths/register scripts/create-owner.ts",
+    "seed": "ts-node -r tsconfig-paths/register scripts/seed-db.ts",
     "content:complete": "ts-node -r tsconfig-paths/register scripts/complete-storefront.ts"
   },
   "dependencies": {
