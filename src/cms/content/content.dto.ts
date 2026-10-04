@@ -39,10 +39,11 @@ export const createPageSchema = z.object({
 });
 export class CreatePageDto extends createZodDto(createPageSchema) {}
 
-export const publishSchema = z.object({ note: z.string().max(255).optional() });
+/** `version` (or the `If-Match` header) is optional: when sent it must match the current draft version, else 409 CONCURRENT_UPDATE. */
+export const publishSchema = z.object({ note: z.string().max(255).optional(), version: z.number().int().min(1).optional() });
 export class PublishDto extends createZodDto(publishSchema) {}
 
-export const scheduleSchema = z.object({ publishAt: z.iso.datetime({ offset: true }), note: z.string().max(255).optional() });
+export const scheduleSchema = z.object({ publishAt: z.iso.datetime({ offset: true }), note: z.string().max(255).optional(), version: z.number().int().min(1).optional() });
 export class ScheduleDto extends createZodDto(scheduleSchema) {}
 
 export const scheduleParamsSchema = documentParamsSchema.extend({ versionId: z.uuid() });

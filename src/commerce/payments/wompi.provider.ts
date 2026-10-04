@@ -6,6 +6,7 @@ import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import type { Order } from "../entities";
 import {
+  checkoutResultUrl,
   ParsedTransaction,
   PaymentInstructions,
   PaymentProvider,
@@ -60,7 +61,8 @@ export class WompiProvider implements PaymentProvider {
       currency: order.currency,
       publicKey,
       signatureIntegrity: sha256Hex(`${order.paymentReference}${amountInCents}${order.currency}${integritySecret}`),
-      redirectUrl: new URL("/checkout/result", this.env.STOREFRONT_URL).toString(),
+      // The order NUMBER (not the access token) travels through the gateway; the storefront reads its own saved token.
+      redirectUrl: checkoutResultUrl(this.env.STOREFRONT_URL, order.orderNumber),
     };
   }
 

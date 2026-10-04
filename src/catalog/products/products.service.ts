@@ -7,6 +7,7 @@ import { Product, Variant, ProductOption, ProductOptionValue, ProductMedia, Medi
 import { AppException } from "../../common/errors/app-exception";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
+import { CatalogCacheService } from "../cache/catalog-cache.service";
 import { Clock } from "../../common/clock/clock";
 import { escapeLike } from "../../common/sql/escape-like";
 import {
@@ -56,6 +57,7 @@ export class ProductsService {
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
     private readonly clock: Clock,
+    private readonly cache: CatalogCacheService,
   ) {}
 
   /* ───────────── create ───────────── */
@@ -131,6 +133,7 @@ export class ProductsService {
         },
         manager,
       );
+      this.cache.productsChanged(manager, { productIds: [savedProduct.id] });
 
       return (await this.findById(savedProduct.id, manager)) as ProductDetailResponseDto;
     });
@@ -341,6 +344,7 @@ export class ProductsService {
         if (!affected) throw AppException.conflict("CONCURRENT_UPDATE", "The product was modified concurrently");
 
         await this.auditService.record({ action: "product:update", entityType: "Product", entityId: id, diff }, manager);
+        this.cache.productsChanged(manager, { productIds: [id], handles: set.handle !== undefined ? [product.handle] : [] });
       }
 
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
@@ -364,6 +368,12 @@ export class ProductsService {
   /** Soft delete + release SKUs + deactivate variants + drop collection membership, all on the caller's transaction. */
   private async softDeleteProducts(ids: string[], manager: EntityManager): Promise<void> {
     if (ids.length === 0) return;
+    const memberships = await manager.query<{ collection_id: string }[]>(
+      "SELECT DISTINCT collection_id FROM collection_products WHERE product_id = ANY($1::uuid[])",
+      [ids],
+    );
+    this.cache.productsChanged(manager, { productIds: ids });
+    this.cache.collectionsChanged(manager, { collectionIds: memberships.map((m) => m.collection_id) });
     await manager.getRepository(Product).update({ id: In(ids) }, { deletedAt: this.clock.now() });
     await manager
       .createQueryBuilder()
@@ -417,6 +427,7 @@ export class ProductsService {
           },
           manager,
         );
+        this.cache.productsChanged(manager, { productIds: [productId] });
         return this.mapVariantToDto(saved);
       } catch (err: unknown) {
         if (this.isDuplicateKeyError(err) && input.sku) throw AppException.conflict("SKU_TAKEN", "This SKU is already in use");
@@ -527,6 +538,7 @@ export class ProductsService {
           { action: "product:variant:update", entityType: "Variant", entityId: variantId, diff },
           manager,
         );
+        this.cache.productsChanged(manager, { productIds: [productId] });
       }
 
       const updated = await variantRepo.findOneOrFail({ where: { id: variantId } });
@@ -563,6 +575,7 @@ export class ProductsService {
         },
         manager,
       );
+      this.cache.productsChanged(manager, { productIds: [productId] });
     });
   }
 
@@ -769,6 +782,7 @@ export class ProductsService {
         allowBackorder: v.allowBackorder,
         optionValueIds: v.optionValueIds,
         isActive: v.isActive,
+        version: v.version,
       })),
       media: media.map((m) => ({ id: m.id, url: m.url, alt: m.alt ?? null, width: m.width ?? null, height: m.height ?? null, mimeType: m.mimeType ?? null })),
       createdAt: product.createdAt,
@@ -868,6 +882,7 @@ export class ProductsService {
         },
         manager,
       );
+      this.cache.productsChanged(manager, { productIds: [savedProduct.id] });
 
       return (await this.findById(savedProduct.id, manager)) as ProductDetailResponseDto;
     });
@@ -907,6 +922,7 @@ export class ProductsService {
         },
         manager,
       );
+      this.cache.productsChanged(manager, { productIds: [id] });
 
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
@@ -926,6 +942,7 @@ export class ProductsService {
         { action: "product:archive", entityType: "Product", entityId: id, diff: { status: { old: oldStatus, new: "archived" } } },
         manager,
       );
+      this.cache.productsChanged(manager, { productIds: [id] });
 
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
@@ -1054,6 +1071,7 @@ export class ProductsService {
         },
         manager,
       );
+      this.cache.productsChanged(manager, { productIds: [id] });
 
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
@@ -1122,6 +1140,7 @@ export class ProductsService {
         },
         manager,
       );
+      this.cache.productsChanged(manager, { productIds: [id] });
 
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
@@ -1201,6 +1220,7 @@ export class ProductsService {
       }
 
       await this.softDeleteProducts(toDelete, manager);
+      this.cache.productsChanged(manager, { productIds: processed });
 
       return { action: input.action, processed, skipped };
     });

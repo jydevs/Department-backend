@@ -7,6 +7,7 @@ import { Collection } from "../entities/collection.entity";
 import { AppException } from "../../common/errors/app-exception";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
+import { CatalogCacheService } from "../cache/catalog-cache.service";
 import { MetafieldInput, MetafieldOwnerType, MetafieldResponseDto } from "./dto/metafield.dto";
 
 @Injectable()
@@ -20,6 +21,7 @@ export class MetafieldsService {
     private readonly collectionRepository: Repository<Collection>,
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
+    private readonly cache: CatalogCacheService,
   ) {}
 
   async getMetafields(ownerType: MetafieldOwnerType, ownerId: string): Promise<MetafieldResponseDto[]> {
@@ -86,6 +88,9 @@ export class MetafieldsService {
 
         results.push(this.mapToDto(saved));
       }
+
+      if (ownerType === "product") this.cache.productsChanged(manager, { productIds: [ownerId] });
+      else this.cache.collectionsChanged(manager, { collectionIds: [ownerId] });
 
       return results;
     });

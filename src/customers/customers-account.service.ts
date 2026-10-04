@@ -42,7 +42,12 @@ export class CustomersAccountService {
   /* ── profile ──────────────────────────────────────────── */
 
   async getProfile(customerId: string): Promise<CustomerProfileDto> {
-    return toProfile(await this.requireCustomer(customerId));
+    const customer = await this.requireCustomer(customerId);
+    const staffRows = await this.customers.manager.query(
+      "SELECT 1 FROM staff_users WHERE lower(email) = lower($1) AND is_active = true LIMIT 1",
+      [customer.email],
+    );
+    return toProfile(customer, staffRows.length > 0);
   }
 
   async updateProfile(customerId: string, input: UpdateProfileInput): Promise<CustomerProfileDto> {

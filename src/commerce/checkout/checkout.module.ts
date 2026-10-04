@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuditModule } from "../../audit/audit.module";
 import { DatabaseModule } from "../../database/database.module";
+import { CustomersModule } from "../../customers/customers.module";
 import { InventoryModule } from "../../inventory/inventory.module";
 import {
   Cart,
@@ -15,6 +16,7 @@ import {
   OrderLine,
   Payment,
 } from "../entities";
+import { OrdersLifecycleModule } from "../orders/orders-lifecycle.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { CheckoutController } from "./checkout.controller";
@@ -39,6 +41,8 @@ import { CheckoutService } from "./checkout.service";
     PricingModule,
     AuditModule,
     PaymentsModule,
+    OrdersLifecycleModule,
+    CustomersModule,
   ],
   providers: [CheckoutService],
   controllers: [CheckoutController],

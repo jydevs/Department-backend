@@ -31,6 +31,11 @@ export class OrderNumberParamDto extends createZodDto(orderNumberParamSchema) {}
 export const orderTokenQuerySchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{20,128}$/) });
 export class OrderTokenQueryDto extends createZodDto(orderTokenQuerySchema) {}
 
+/** Cancel: the token goes in the query (like the GET) or in the JSON body; at least one is required. */
+export class CancelOrderBodyDto extends createZodDto(z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{20,128}$/).optional() })) {}
+export const optionalOrderTokenQuerySchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{20,128}$/).optional() });
+export class OptionalOrderTokenQueryDto extends createZodDto(optionalOrderTokenQuerySchema) {}
+
 /* ── responses ── */
 
 export interface CheckoutResponseDto {

@@ -6,6 +6,7 @@ import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import type { Order } from "../entities";
 import {
+  checkoutResultUrl,
   ParsedTransaction,
   PaymentInstructions,
   PaymentProvider,
@@ -37,6 +38,7 @@ export class MockProvider implements PaymentProvider {
       reference: order.paymentReference,
       amountInCents: order.total * 100,
       currency: order.currency,
+      redirectUrl: checkoutResultUrl(this.env.STOREFRONT_URL, order.orderNumber),
       checkoutUrl: new URL(`/mock-checkout/${encodeURIComponent(order.paymentReference)}`, this.env.STOREFRONT_URL).toString(),
     };
   }

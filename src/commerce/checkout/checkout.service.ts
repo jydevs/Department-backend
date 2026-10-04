@@ -13,6 +13,8 @@ import { InventoryService } from "../../inventory/inventory.service";
 import { Cart, CartLine, Discount, DiscountRedemption, Fulfillment, Order, OrderEvent, OrderLine, Payment } from "../entities";
 import { PAYMENT_PROVIDER, PaymentProvider } from "../payments/payment-provider";
 import { safeEqual } from "../payments/safe-equal";
+import { orderTokenMatches } from "../orders/order-access";
+import { OrdersLifecycleService } from "../orders/orders-lifecycle.service";
 import { PricingService } from "../pricing/pricing.service";
 import type { Quote } from "../pricing/pricing.types";
 import { CheckoutInput, CheckoutResponseDto, PublicOrderDto, StoredCheckoutResponse } from "./checkout.dto";
@@ -56,6 +58,7 @@ export class CheckoutService {
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
     @Inject(ENV) private readonly env: Env,
     @InjectRepository(Order) private readonly orders: Repository<Order>,
+    private readonly lifecycle: OrdersLifecycleService,
   ) {}
 
   /**
@@ -66,9 +69,9 @@ export class CheckoutService {
    * Idempotent replay: the stored response never contains the plaintext accessToken. A replay (same key + same body)
    * returns the same order and payment instructions with a NEW accessToken and invalidates the previous one.
    */
-  async create(input: CheckoutInput, idempotencyKey: string, cartToken: string): Promise<CheckoutResponseDto> {
+  async create(input: CheckoutInput, idempotencyKey: string, cartToken: string, customerId: string | null = null): Promise<CheckoutResponseDto> {
     const requestHash = sha256Hex(canonicalize(input));
-    return this.transactions.run((manager) => this.createInTransaction(manager, input, idempotencyKey, cartToken, requestHash));
+    return this.transactions.run((manager) => this.createInTransaction(manager, input, idempotencyKey, cartToken, requestHash, customerId));
   }
 
   private async createInTransaction(
@@ -77,6 +80,7 @@ export class CheckoutService {
     idempotencyKey: string,
     cartToken: string,
     requestHash: string,
+    customerId: string | null,
   ): Promise<CheckoutResponseDto> {
     const now = this.clock.now();
 
@@ -142,6 +146,7 @@ export class CheckoutService {
       orderRepo.create({
         accessTokenHash: sha256Hex(accessToken),
         email: input.email,
+        customerId,
         phone: input.phone ?? null,
         status: "pending",
         paymentStatus: "pending",
@@ -203,8 +208,8 @@ export class CheckoutService {
         orderId: order.id,
         type: "order.created",
         data: { total: order.total, currency: order.currency, lines: quote.lines.length, discountCode: order.discountCode },
-        actorType: "guest",
-        actorId: null,
+        actorType: customerId ? "customer" : "guest",
+        actorId: customerId,
       }),
     );
 
@@ -288,13 +293,59 @@ export class CheckoutService {
 
   /* ── public order status ── */
 
-  /** Public status page. The token is compared in constant time against the stored hash; a mismatch is a 404. */
+  /** Public status page. The token is compared in constant time (checkout accessToken or e-mail link token); a mismatch is a 404. */
   async getPublicOrder(orderNumber: number, token: string): Promise<PublicOrderDto> {
     const order = await this.orders.findOne({ where: { orderNumber } });
-    const expected = order?.accessTokenHash ?? sha256Hex("no-such-order");
-    const matches = safeEqual(sha256Hex(token), expected);
-    if (!order || !matches) throw AppException.notFound("Order");
+    if (!order || !orderTokenMatches(order, token, this.env.JWT_ACCESS_SECRET)) throw AppException.notFound("Order");
+    return this.toPublicOrder(order);
+  }
 
+  /**
+   * Buyer-initiated cancellation of an order that is still pending and unpaid. Idempotent: an already cancelled
+   * order answers 200 with its current state. Releases the stock reservation and the discount (same code path as
+   * expiry/admin cancel), voids the pending payment row and records `order.cancelled` (actor customer | guest).
+   * 404 = unknown order or wrong token; 409 ORDER_NOT_CANCELLABLE = paid, expired, shipped...
+   */
+  async cancelPublicOrder(orderNumber: number, token: string, customerId: string | null): Promise<PublicOrderDto> {
+    const found = await this.orders.findOne({ where: { orderNumber } });
+    if (!found || !orderTokenMatches(found, token, this.env.JWT_ACCESS_SECRET)) throw AppException.notFound("Order");
+
+    await this.transactions.run(async (manager) => {
+      const order = await manager.getRepository(Order).findOne({ where: { id: found.id }, lock: { mode: "pessimistic_write" } });
+      if (!order) throw AppException.notFound("Order");
+      if (order.status === "cancelled" && order.paymentStatus !== "paid") return; // idempotent replay
+      if (order.status !== "pending" || order.paymentStatus !== "pending") {
+        throw AppException.conflict("ORDER_NOT_CANCELLABLE", "Only pending orders without a confirmed payment can be cancelled", {
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+        });
+      }
+      const paymentRepo = manager.getRepository(Payment);
+      const payment = await paymentRepo.findOne({ where: { orderId: order.id, reference: order.paymentReference }, order: { createdAt: "DESC" } });
+      if (payment?.status === "approved") {
+        throw AppException.conflict("ORDER_NOT_CANCELLABLE", "The payment was already approved; contact support", { status: order.status, paymentStatus: order.paymentStatus });
+      }
+
+      await this.lifecycle.cancel(
+        order.id,
+        { reason: "Cancelado a solicitud del cliente", restock: false, actor: customerId ? { kind: "customer", customerId } : { kind: "guest" } },
+        manager,
+      );
+      // The gateway transaction (if the buyer already opened the widget) cannot be annulled from here: we ignore it. A late
+      // APPROVED webhook finds a cancelled order and is handled by PaymentEventsService as `late_approval` (refund-pending).
+      if (payment) {
+        payment.status = "voided";
+        payment.rawStatus = "CANCELLED_BY_CUSTOMER";
+        await paymentRepo.save(payment);
+      }
+      await manager.query(`UPDATE orders SET payment_status = 'failed', version = version + 1, updated_at = $2 WHERE id = $1`, [order.id, this.clock.now()]);
+    });
+
+    const fresh = await this.orders.findOneOrFail({ where: { id: found.id } });
+    return this.toPublicOrder(fresh);
+  }
+
+  private async toPublicOrder(order: Order): Promise<PublicOrderDto> {
     const manager = this.orders.manager;
     const lines = await manager.getRepository(OrderLine).find({ where: { orderId: order.id }, order: { createdAt: "ASC", id: "ASC" } });
     const fulfillments = await manager.getRepository(Fulfillment).find({ where: { orderId: order.id }, order: { shippedAt: "ASC" } });

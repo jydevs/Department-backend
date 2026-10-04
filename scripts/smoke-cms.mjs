@@ -69,6 +69,24 @@ export async function cmsChecks({ base, check, assert, ownerToken, analystToken 
     assert(twice.status === 409, `publishing an unchanged draft should be 409, got ${twice.status}`);
   });
 
+  await check("cms: publish/schedule honour an optional version (body or If-Match) → 409 CONCURRENT_UPDATE when stale", async () => {
+    const cur = await ok(await call("GET", "/admin/content/documents/settings/site", undefined, ownerToken), "get");
+    const saved = await ok(await call("PUT", "/admin/content/documents/settings/site", { data: site(`IfMatch ${stamp}`), version: cur.version }, ownerToken), "edit");
+    assert(saved.version === cur.version + 1, `version ${saved.version}`);
+    const staleBody = await call("POST", "/admin/content/documents/settings/site/publish", { version: cur.version }, ownerToken);
+    assert(staleBody.status === 409 && (await staleBody.json()).code === "CONCURRENT_UPDATE", `stale body version → ${staleBody.status}`);
+    const staleHeader = await call("POST", "/admin/content/documents/settings/site/publish", {}, ownerToken, { "if-match": String(cur.version) });
+    assert(staleHeader.status === 409, `stale If-Match → ${staleHeader.status}`);
+    const staleSchedule = await call("POST", "/admin/content/documents/settings/site/schedule", { publishAt: new Date(Date.now() + 3_600_000).toISOString(), version: cur.version }, ownerToken);
+    assert(staleSchedule.status === 409 && (await staleSchedule.json()).code === "CONCURRENT_UPDATE", `stale schedule → ${staleSchedule.status}`);
+    const pubStill = (await (await fetch(`${api}/storefront/content/settings`)).json()).data.brand.name;
+    assert(pubStill === `Draft ${stamp}`, "a rejected publish must not publish");
+    const good = await call("POST", "/admin/content/documents/settings/site/publish", {}, ownerToken, { "if-match": String(saved.version) });
+    assert(good.status === 200, `matching If-Match → ${good.status} ${await good.clone().text()}`);
+    const published = (await (await fetch(`${api}/storefront/content/settings`)).json()).data.brand.name;
+    assert(published === `IfMatch ${stamp}`, `published "${published}"`);
+  });
+
   await check("cms: scheduled publish is promoted by the scheduler", async () => {
     const cur = await ok(await call("GET", "/admin/content/documents/settings/site", undefined, ownerToken), "get");
     await ok(await call("PUT", "/admin/content/documents/settings/site", { data: site(`Scheduled ${stamp}`), version: cur.version }, ownerToken), "edit");

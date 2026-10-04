@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nest
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 import { AuditService } from "../audit/audit.service";
+import { CatalogCacheService } from "../catalog/cache/catalog-cache.service";
 import { Clock } from "../common/clock/clock";
 import { firstRow, rowsOf } from "../common/sql/query-result";
 import { ENV } from "../config/config.module";
@@ -55,6 +56,7 @@ export class ImportWorker implements OnModuleInit, OnModuleDestroy {
     private readonly clock: Clock,
     private readonly products: ProductImporter,
     private readonly customers: CustomerImporter,
+    private readonly catalogCache: CatalogCacheService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -185,6 +187,7 @@ export class ImportWorker implements OnModuleInit, OnModuleDestroy {
       return await this.tx.run(async (manager) => {
         const outcome = await importer.processBatch(manager, batch, ctx);
         if (job.dryRun) throw new DryRunRollback(outcome); // validate everything, persist nothing
+        if (job.type === "products" && outcome.created + outcome.updated > 0) this.catalogCache.everythingChanged(manager);
         return outcome;
       });
     } catch (err) {

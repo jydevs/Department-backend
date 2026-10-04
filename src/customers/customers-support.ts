@@ -60,7 +60,7 @@ export const anonymizedEmail =(customerId: string): string => `deleted+${custome
 
 /* ── mappers ──────────────────────────────────────────────── */
 
-export const toProfile = (c: Customer): CustomerProfileDto => ({
+export const toProfile = (c: Customer, isStaff = false): CustomerProfileDto => ({
   id: c.id,
   email: c.email,
   firstName: c.firstName,
@@ -68,6 +68,7 @@ export const toProfile = (c: Customer): CustomerProfileDto => ({
   phone: c.phone ?? null,
   acceptsMarketing: c.acceptsMarketing,
   emailVerified: !!c.emailVerifiedAt,
+  isStaff,
   createdAt: c.createdAt,
 });
 

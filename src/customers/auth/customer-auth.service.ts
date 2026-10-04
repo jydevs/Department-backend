@@ -152,8 +152,14 @@ export class CustomerAuthService implements OnModuleInit {
       if (customer.emailVerifiedAt) await linkGuestOrders(manager, customer.id, customer.email);
     });
 
+    const staffRows = (await this.dataSource.query(
+      "SELECT id FROM staff_users WHERE lower(email) = lower($1) AND is_active = true LIMIT 1",
+      [customer.email],
+    )) as unknown[];
+    const isStaff = staffRows.length > 0;
+
     const access = await this.tokens.sign(customer.id);
-    return { accessToken: access.token, expiresIn: access.expiresIn, refreshToken: refresh.token, customer: toProfile(customer) };
+    return { accessToken: access.token, expiresIn: access.expiresIn, refreshToken: refresh.token, customer: toProfile(customer, isStaff) };
   }
 
   /**

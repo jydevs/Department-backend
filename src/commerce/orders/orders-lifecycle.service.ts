@@ -7,7 +7,7 @@ import { AppException } from "../../common/errors/app-exception";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { MailService } from "../../mail/mail.service";
-import { formatCop, itemsSummary, orderCustomerName, orderNumberLabel, orderUrl } from "./order-mail";
+import { formatCop, itemsSummary, orderCustomerName, orderLinkToken, orderNumberLabel, orderUrl } from "./order-mail";
 import { TransactionService } from "../../database/transaction.service";
 import { InventoryService } from "../../inventory/inventory.service";
 import { Discount, DiscountRedemption, Order, OrderEvent, OrderLine, Payment } from "../entities";
@@ -20,10 +20,13 @@ export interface MarkPaidPayment {
   manual?: boolean;
 }
 
+/** Who triggered a transition: any authenticated actor, or an anonymous buyer holding the order token. */
+export type EventActor = Actor | { kind: "guest" };
+
 export interface CancelOptions {
   reason: string;
   restock: boolean;
-  actor?: Actor;
+  actor?: EventActor;
 }
 
 /** What `flagRefundPending` records in the timeline. */
@@ -98,7 +101,8 @@ export class OrdersLifecycleService {
           orderNumber: orderNumberLabel(order.orderNumber),
           total: formatCop(order.total),
           itemsSummary: itemsSummary(lines),
-          orderUrl: orderUrl(this.env.STOREFRONT_URL, order.orderNumber),
+          // Confirmation mail: the link opens the order directly (stateless link token, see order-mail.ts).
+          orderUrl: orderUrl(this.env.STOREFRONT_URL, order.orderNumber, orderLinkToken(this.env.JWT_ACCESS_SECRET, order.id)),
         },
       },
       manager,
@@ -180,7 +184,7 @@ export class OrdersLifecycleService {
     type: RefundPendingEventType,
     data: Record<string, unknown>,
     manager: EntityManager,
-    actor?: Actor,
+    actor?: EventActor,
   ): Promise<void> {
     await manager.query(
       `UPDATE orders
@@ -229,7 +233,7 @@ export class OrdersLifecycleService {
   }
 
   /** Appends a timeline entry; `actor` staff => actorId, otherwise the kind (or `system`). */
-  async recordEvent(manager: EntityManager, orderId: string, type: string, data: Record<string, unknown>, actor?: Actor): Promise<void> {
+  async recordEvent(manager: EntityManager, orderId: string, type: string, data: Record<string, unknown>, actor?: EventActor): Promise<void> {
     const repo = manager.getRepository(OrderEvent);
     await repo.save(
       repo.create({
@@ -237,7 +241,7 @@ export class OrdersLifecycleService {
         type,
         data,
         actorType: actor?.kind ?? "system",
-        actorId: actor?.kind === "staff" ? actor.staffId : null,
+        actorId: actor?.kind === "staff" ? actor.staffId : actor?.kind === "customer" ? actor.customerId : null,
       }),
     );
   }
@@ -274,7 +278,7 @@ export class OrdersLifecycleService {
     }
   }
 
-  private async auditIfStaff(manager: EntityManager, actor: Actor | undefined, action: string, orderId: string, diff: Record<string, unknown>): Promise<void> {
+  private async auditIfStaff(manager: EntityManager, actor: EventActor | undefined, action: string, orderId: string, diff: Record<string, unknown>): Promise<void> {
     if (actor?.kind !== "staff") return;
     await this.audit.record({ action, entityType: "Order", entityId: orderId, diff }, manager);
   }

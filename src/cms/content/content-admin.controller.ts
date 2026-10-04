@@ -83,14 +83,24 @@ export class ContentAdminController {
   @Post("documents/:kind/:key/publish")
   @HttpCode(200)
   @RequirePermissions("content:publish")
-  publish(@Param() { kind, key }: DocumentParamsDto, @Body() input: PublishDto, @CurrentActor() actor: Actor): Promise<DocumentDetailDto> {
-    return this.content.publish(kind, key, input.note, staffId(actor));
+  publish(
+    @Param() { kind, key }: DocumentParamsDto,
+    @Body() input: PublishDto,
+    @Headers("if-match") ifMatch: string | undefined,
+    @CurrentActor() actor: Actor,
+  ): Promise<DocumentDetailDto> {
+    return this.content.publish(kind, key, input.note, staffId(actor), input.version ?? parseIfMatch(ifMatch));
   }
 
   @Post("documents/:kind/:key/schedule")
   @RequirePermissions("content:publish")
-  schedule(@Param() { kind, key }: DocumentParamsDto, @Body() input: ScheduleDto, @CurrentActor() actor: Actor): Promise<VersionSummaryDto> {
-    return this.content.schedule(kind, key, input.publishAt, input.note, staffId(actor));
+  schedule(
+    @Param() { kind, key }: DocumentParamsDto,
+    @Body() input: ScheduleDto,
+    @Headers("if-match") ifMatch: string | undefined,
+    @CurrentActor() actor: Actor,
+  ): Promise<VersionSummaryDto> {
+    return this.content.schedule(kind, key, input.publishAt, input.note, staffId(actor), input.version ?? parseIfMatch(ifMatch));
   }
 
   @Delete("documents/:kind/:key/schedule/:versionId")

@@ -84,6 +84,9 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     assert(order.total === expectedTotal, `total ${order.total} !== ${expectedTotal}`);
     assert(order.payment?.provider === "mock" && order.accessToken, "payment instructions / token missing");
     orderToken = order.accessToken;
+    const redirect = order.payment.redirectUrl ?? "";
+    assert(redirect.endsWith(`/checkout/result?order=${order.orderNumber}`), `redirectUrl ${redirect}`);
+    assert(!redirect.includes(order.accessToken) && !/token/i.test(redirect), "redirectUrl must carry the order number, never the access token");
     const r2 = await doCheckout(cart, key);
     const again = await ok(r2, "replay");
     assert(again.orderNumber === order.orderNumber, "replay created another order");
@@ -152,6 +155,72 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     assert(d.status === "cancelled" && (d.tags ?? []).includes("refund-pending"), `${d.status} tags=${JSON.stringify(d.tags)}`);
   });
 
+  await check("commerce: the confirmation e-mail links to /orders/<number>?token=... and that link opens the order", async () => {
+    try {
+      process.loadEnvFile();
+    } catch {
+      /* .env is optional */
+    }
+    if (!process.env.DATABASE_URL) return console.log("       (DATABASE_URL not set: e-mail outbox unavailable, skipped)");
+    const { createRequire } = await import("node:module");
+    const { Client } = createRequire(import.meta.url)("pg");
+    const db = new Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+      let link;
+      for (let i = 0; i < 20 && !link; i++) {
+        const r = await db.query("SELECT body_text FROM email_outbox WHERE \"to\" = $1 AND template = 'order_confirmation' ORDER BY created_at DESC", [`buyer-${stamp}@dept.test`]);
+        link = r.rows.map((x) => x.body_text.match(new RegExp(`/orders/${order.orderNumber}\\?token=([A-Za-z0-9_-]+)`))).find(Boolean);
+        if (!link) await new Promise((res) => setTimeout(res, 500));
+      }
+      assert(link, "no confirmation e-mail with a tokenised order link");
+      assert(link[1] !== orderToken, "e-mail must not leak the buyer's access token");
+      const viaMail = await ok(await fetch(`${api}/storefront/orders/${order.orderNumber}?token=${link[1]}`), "order via e-mail token");
+      assert(viaMail.orderNumber === order.orderNumber, "wrong order");
+      const wrong = await fetch(`${api}/storefront/orders/${order.orderNumber + 1}?token=${link[1]}`);
+      assert(wrong.status === 404, `e-mail token on another order → ${wrong.status}`);
+    } finally {
+      await db.end();
+    }
+  });
+
+  await check("commerce: buyer cancels a pending order (token): stock released, idempotent, event by guest; late approval → refund-pending", async () => {
+    const prod = await newProduct(`Smoke Cancel ${stamp}`, 1);
+    const c = await newCart();
+    await ok(await addLine(c, prod.variantId, 1), "add");
+    const o = await ok(await doCheckout(c, `idem-${stamp}-cancel`), "checkout");
+    assert((await available(prod.handle)) === false, "unit should be reserved");
+    const url = `/storefront/orders/${o.orderNumber}/cancel`;
+    const noToken = await call("POST", url, {});
+    assert(noToken.status === 400, `no token → ${noToken.status}`);
+    const wrong = await call("POST", `${url}?token=${"z".repeat(43)}`, {});
+    assert(wrong.status === 404, `wrong token → ${wrong.status}`);
+    assert((await available(prod.handle)) === false, "a rejected cancel must keep the reservation");
+    const done = await ok(await call("POST", `${url}?token=${o.accessToken}`), "cancel");
+    assert(done.status === "cancelled" && done.paymentStatus === "failed" && done.reservedUntil === null, `${done.status}/${done.paymentStatus}`);
+    assert((await available(prod.handle)) === true, "reservation not released");
+    const again = await ok(await call("POST", url, { token: o.accessToken }), "cancel again (token in body)");
+    assert(again.status === "cancelled", "second cancel should be an idempotent 200");
+    const id = await orderIdByNumber(o.orderNumber);
+    const d = await adminOrder(id);
+    const ev = (d.events ?? []).filter((e) => e.type === "order.cancelled");
+    assert(ev.length === 1 && ev[0].actorType === "guest", `events ${JSON.stringify(ev.map((e) => [e.type, e.actorType]))}`);
+    const late = await mockPay(o.payment.reference, "approved");
+    const lateBody = await late.json();
+    assert(late.status < 300 && lateBody.outcome === "late_approval", `late approval → ${late.status} ${JSON.stringify(lateBody)}`);
+    const after = await adminOrder(id);
+    assert(after.status === "cancelled" && (after.tags ?? []).includes("refund-pending"), `${after.status} tags=${JSON.stringify(after.tags)}`);
+    const pub = await ok(await fetch(`${api}/storefront/orders/${o.orderNumber}?token=${o.accessToken}`), "public order");
+    assert(pub.status === "cancelled", "a late approval must not revive the order");
+    assert((await available(prod.handle)) === true, "late approval must not re-reserve stock");
+  });
+
+  await check("commerce: a paid order cannot be cancelled by the buyer (409 ORDER_NOT_CANCELLABLE)", async () => {
+    const r = await call("POST", `/storefront/orders/${order.orderNumber}/cancel?token=${orderToken}`);
+    const j = await r.json();
+    assert(r.status === 409 && j.code === "ORDER_NOT_CANCELLABLE", `${r.status} ${JSON.stringify(j)}`);
+  });
+
   await check("commerce: a discount with usageLimit=1 is redeemed by only one of two parallel checkouts", async () => {
     const prod = await newProduct(`Smoke Race ${stamp}`, 5);
     const limited = `LIMIT1${stamp}`;
@@ -174,5 +243,5 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
       assert(d.status === 403, `analyst discount → ${d.status}`);
     }
   });
-  return { buyerEmail: `buyer-${stamp}@dept.test`, orderNumber: order?.orderNumber };
+  return { buyerEmail: `buyer-${stamp}@dept.test`, orderNumber: order?.orderNumber, rateId, locationId };
 }

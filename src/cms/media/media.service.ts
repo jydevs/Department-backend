@@ -9,6 +9,7 @@ import { AppException } from "../../common/errors/app-exception";
 import { OffsetPage, toOffsetPage } from "../../common/pagination/pagination";
 import { escapeLike } from "../../common/sql/escape-like";
 import { RequestContextStore } from "../../common/context/request-context";
+import { CatalogCacheService } from "../../catalog/cache/catalog-cache.service";
 import { Media } from "../../catalog/entities";
 import { TransactionService } from "../../database/transaction.service";
 import { isUniqueViolation } from "../content/content.util";
@@ -39,6 +40,7 @@ export class MediaService {
     private readonly tx: TransactionService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
     private readonly audit: AuditService,
+    private readonly catalogCache: CatalogCacheService,
   ) {}
 
   async upload(file: { buffer: Buffer; originalname: string } | undefined): Promise<MediaUploadResultDto> {
@@ -130,6 +132,7 @@ export class MediaService {
       media.alt = alt === "" ? null : alt;
       const saved = await manager.save(media);
       await this.audit.record({ action: "media:update", entityType: "Media", entityId: id, diff: { alt: { from: before, to: saved.alt ?? null } } }, manager);
+      this.catalogCache.everythingChanged(manager);
       return this.toDto(saved);
     });
   }
@@ -165,6 +168,7 @@ export class MediaService {
         },
         manager,
       );
+      if (collectionsCleared + productsUnlinked > 0) this.catalogCache.everythingChanged(manager);
       return media.storageKey ?? null;
     });
     if (key) await this.storage.delete(key).catch(() => undefined); // after commit: a failed file removal must not resurrect the row

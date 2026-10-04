@@ -22,12 +22,15 @@ export const CUSTOMER_REFRESH_COOKIE = "dept_ct";
 const COOKIE_PATH = "/api/v1/storefront/customers";
 const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
+import { AuthService } from "../../identity/auth/auth.service";
+
 /** Storefront customer authentication. Every route is @Public() for the staff guard: nothing here uses a staff token. */
 @ApiTags("storefront-customers-auth")
 @Controller("storefront/customers")
 export class CustomerAuthController {
   constructor(
     private readonly auth: CustomerAuthService,
+    private readonly staffAuth: AuthService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -49,6 +52,22 @@ export class CustomerAuthController {
   async login(@Body() dto: CustomerLoginDto, @Res({ passthrough: true }) res: Response): Promise<CustomerLoginResponse> {
     const { refreshToken, ...result } = await this.auth.login(dto.email, dto.password);
     this.setRefreshCookie(res, refreshToken);
+
+    if (result.customer.isStaff) {
+      try {
+        const staffRes = await this.staffAuth.login(dto.email, dto.password);
+        res.cookie("dept_rt", staffRes.refreshToken, {
+          httpOnly: true,
+          secure: this.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/api/v1/auth",
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+        });
+      } catch {
+        /* no-op */
+      }
+    }
+
     res.setHeader("Cache-Control", "no-store");
     return result;
   }

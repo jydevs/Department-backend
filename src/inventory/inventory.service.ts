@@ -7,6 +7,7 @@ import { Variant } from "../catalog/entities/variant.entity";
 import { AppException } from "../common/errors/app-exception";
 import { TransactionService } from "../database/transaction.service";
 import { AuditService } from "../audit/audit.service";
+import { CatalogCacheService } from "../catalog/cache/catalog-cache.service";
 import { Clock } from "../common/clock/clock";
 import { AdjustInventoryInput, InventoryQueryParams } from "./dto/inventory-level.dto";
 import { CreateLocationInput, UpdateLocationInput } from "./dto/location.dto";
@@ -36,6 +37,7 @@ export class InventoryService {
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
     private readonly clock: Clock,
+    private readonly cache: CatalogCacheService,
   ) {}
 
   /* ── Locations ─────────────────────────────────────────────── */
@@ -150,6 +152,7 @@ export class InventoryService {
           },
           manager,
         );
+        if (before.isActive !== updated.isActive) this.cache.everythingChanged(manager);
 
         return this.mapLocationToDto(updated);
       });
@@ -288,6 +291,7 @@ export class InventoryService {
         },
         manager,
       );
+      this.cache.productsChanged(manager, { variantIds: [input.variantId] });
 
       return this.mapAdjustmentToDto(saved, variant);
     });
@@ -462,6 +466,7 @@ export class InventoryService {
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_STOCK", "Not enough stock for some items", { items: short });
     }
+    if (tracked.length > 0) this.cache.productsChanged(manager, { variantIds: tracked.map((i) => i.variantId) });
     return tracked;
   }
 
@@ -503,6 +508,7 @@ export class InventoryService {
         items: short,
       });
     }
+    if (tracked.length > 0) this.cache.productsChanged(manager, { variantIds: tracked.map((i) => i.variantId) });
   }
 
   /** Commits using the CURRENT variant policy (legacy). Prefer `commitReserved` for orders. */
@@ -608,6 +614,7 @@ export class InventoryService {
       adjustment.actorId = null;
       await adjRepo.save(adjustment);
     }
+    this.cache.productsChanged(manager, { variantIds: tracked.map((i) => i.variantId) });
   }
 
   /**

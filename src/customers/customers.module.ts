@@ -7,7 +7,7 @@ import { OrderLine } from "../commerce/entities/order-line.entity";
 import { PasswordService } from "../identity/auth/password.service";
 import { MailModule } from "../mail/mail.module";
 import { CustomerAuthController } from "./auth/customer-auth.controller";
-import { CustomerAuthGuard } from "./auth/customer-auth.guard";
+import { CustomerAuthGuard, CustomerSessionService } from "./auth/customer-auth.guard";
 import { CustomerAuthService } from "./auth/customer-auth.service";
 import { CustomerTokenService } from "./auth/customer-token.service";
 import { CustomersCleanupScheduler } from "./customers-cleanup.scheduler";
@@ -18,24 +18,28 @@ import { CustomersAdminController } from "./customers-admin.controller";
 import { CustomersAdminService } from "./customers-admin.service";
 import { Customer, CustomerAddress, CustomerRefreshToken, CustomerToken } from "./entities";
 
+import { AuthModule } from "../identity/auth/auth.module";
+
 /** Storefront customer accounts (auth, self-service, Habeas Data) and the admin customer directory. */
 @Module({
   imports: [
     TypeOrmModule.forFeature([Customer, CustomerAddress, CustomerRefreshToken, CustomerToken, Order, OrderLine, Fulfillment]),
     DatabaseModule,
     MailModule,
+    AuthModule,
   ],
   controllers: [CustomerAuthController, CustomersAccountController, CustomersAdminController],
   providers: [
     PasswordService,
     CustomerTokenService,
     CustomerAuthGuard,
+    CustomerSessionService,
     CustomerAuthService,
     CustomerErasureService,
     CustomersCleanupScheduler,
     CustomersAccountService,
     CustomersAdminService,
   ],
-  exports: [CustomerAuthGuard, CustomerTokenService, CustomerErasureService],
+  exports: [CustomerAuthGuard, CustomerSessionService, CustomerTokenService, CustomerErasureService],
 })
 export class CustomersModule {}
