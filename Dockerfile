@@ -5,7 +5,7 @@
 #   docker run --rm --env-file .env <image> yarn migration:run:prod
 
 # ---- deps: every dependency, to compile ----
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 RUN corepack enable
 COPY package.json yarn.lock ./
@@ -15,14 +15,14 @@ COPY src ./src
 RUN yarn build
 
 # ---- prod-deps: production dependencies only ----
-FROM node:22-alpine AS prod-deps
+FROM node:26-alpine AS prod-deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile --production && yarn cache clean
 
 # ---- runtime ----
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 ENV NODE_ENV=production \
     PORT=4000 \
     UPLOAD_DIR=/data/uploads
