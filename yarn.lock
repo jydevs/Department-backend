@@ -2534,10 +2534,10 @@ neo-async@^2.6.2:
   resolved "https://registry.yarnpkg.com/neo-async/-/neo-async-2.6.2.tgz#b4aafb93e3aeb2d8174ca53cf163ab7d7308305f"
   integrity sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==
 
-nestjs-pino@^5.2.0:
-  version "5.2.0"
-  resolved "https://registry.yarnpkg.com/nestjs-pino/-/nestjs-pino-5.2.0.tgz#5d04986e8f47bcfba44cf7da5a9010c176cb5063"
-  integrity sha512-w7zIidjqzhvB7TSDBttC//NxKBAz2rr2d6pNctsglWqb/VqNbDj/Hko2VsgHMYmLpIoZ5pka5gASbGc60V8Qvw==
+nestjs-pino@^5.3.0:
+  version "5.3.0"
+  resolved "https://registry.yarnpkg.com/nestjs-pino/-/nestjs-pino-5.3.0.tgz#8b3b60fc60b5bae126fba9014bb7e0966599cea3"
+  integrity sha512-9x6SGP6+eu/I4OUqBXuYStB52k8gJUU7U/wv3PnkH8GMLNTQcj4ZCk6Wkd/ta2MJC4e0MOwiNdZlOYU308PXHw==
 
 nestjs-zod@^5.5.0:
   version "5.5.0"
