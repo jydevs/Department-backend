@@ -1,0 +1,4 @@
+Email,First Name,Last Name,Phone,Accepts Email Marketing,Default Address Company,Default Address Address1,Default Address City,Default Address Province,Default Address Zip,Default Address Phone
+ana.gomez@example.com,Ana,Gomez,+573001234567,yes,,Calle 10 # 5-20,Medellin,Antioquia,050001,+573001234567
+carlos.ruiz@example.com,Carlos,Ruiz,,no,,,,,,
+laura.mesa@example.com,Laura,Mesa,3105551234,yes,Mesa SAS,Carrera 7 # 71-21,Bogota,Cundinamarca,110231,

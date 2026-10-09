@@ -1,0 +1,121 @@
+import { MigrationInterface, QueryRunner } from "typeorm";
+
+export class Commerce1790338745227 implements MigrationInterface {
+    name = 'Commerce1790338745227'
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`CREATE SEQUENCE IF NOT EXISTS "order_number_seq" START WITH 1001 INCREMENT BY 1`);
+        await queryRunner.query(`CREATE TABLE "carts" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "token_hash" character(64) NOT NULL, "currency" character varying(3) NOT NULL DEFAULT 'COP', "discount_code" character varying(40), "expires_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL, "converted_order_id" uuid, CONSTRAINT "UQ_42ffc476d9dbddaaa0f19bdf8dc" UNIQUE ("token_hash"), CONSTRAINT "PK_b5f695a59f5ebb50af3c8160816" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_43c12e63de56cae6991c9c59ab" ON "carts"  ("expires_at") `);
+        await queryRunner.query(`CREATE TABLE "cart_lines" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "cart_id" uuid NOT NULL, "variant_id" uuid NOT NULL, "quantity" integer NOT NULL, CONSTRAINT "chk_cart_lines_quantity" CHECK ("quantity" >= 1 AND "quantity" <= 20), CONSTRAINT "PK_a8b728889a5b050537ab02e07bd" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_7acba23c479d9986b5dd08df78" ON "cart_lines"  ("variant_id") `);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_f796d0a65455dff02c7a18de12" ON "cart_lines"  ("cart_id", "variant_id") `);
+        await queryRunner.query(`CREATE TABLE "discounts" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(40) NOT NULL, "title" character varying(120) NOT NULL, "type" character varying(15) NOT NULL, "value" integer NOT NULL DEFAULT '0', "min_subtotal" bigint, "starts_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL, "ends_at" TIMESTAMP(3) WITH TIME ZONE, "usage_limit" integer, "used_count" integer NOT NULL DEFAULT '0', "once_per_email" boolean NOT NULL DEFAULT false, "is_active" boolean NOT NULL DEFAULT true, CONSTRAINT "UQ_8c7cc2340e9ea0fc5a246e63749" UNIQUE ("code"), CONSTRAINT "chk_discounts_used_count_nonneg" CHECK ("used_count" >= 0), CONSTRAINT "chk_discounts_type" CHECK ("type" IN ('percent','fixed','free_shipping')), CONSTRAINT "PK_66c522004212dc814d6e2f14ecc" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "orders" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "version" integer NOT NULL, "order_number" integer NOT NULL DEFAULT nextval('order_number_seq'), "access_token_hash" character(64) NOT NULL, "email" character varying(255) NOT NULL, "phone" character varying(30), "status" character varying(20) NOT NULL DEFAULT 'pending', "payment_status" character varying(20) NOT NULL DEFAULT 'pending', "fulfillment_status" character varying(20) NOT NULL DEFAULT 'unfulfilled', "currency" character varying(3) NOT NULL DEFAULT 'COP', "subtotal" bigint NOT NULL, "discount_total" bigint NOT NULL DEFAULT '0', "shipping_total" bigint NOT NULL DEFAULT '0', "tax_total" bigint NOT NULL DEFAULT '0', "total" bigint NOT NULL, "total_refunded" bigint NOT NULL DEFAULT '0', "discount_code" character varying(40), "shipping_rate_name" character varying(120), "shipping_address" jsonb NOT NULL, "billing_address" jsonb, "customer_note" character varying(500), "internal_note" text, "tags" text array NOT NULL DEFAULT '{}', "reserved_until" TIMESTAMP(3) WITH TIME ZONE, "paid_at" TIMESTAMP(3) WITH TIME ZONE, "cancelled_at" TIMESTAMP(3) WITH TIME ZONE, "cancel_reason" character varying(255), "customer_id" uuid, "payment_provider" character varying(20) NOT NULL, "payment_reference" character varying(80) NOT NULL, "idempotency_key_id" uuid, CONSTRAINT "UQ_75eba1c6b1a66b09f2a97e6927b" UNIQUE ("order_number"), CONSTRAINT "UQ_0fd0d909c78f8efa1fb47d0c91c" UNIQUE ("payment_reference"), CONSTRAINT "chk_orders_amounts_nonneg" CHECK ("subtotal" >= 0 AND "discount_total" >= 0 AND "shipping_total" >= 0 AND "tax_total" >= 0 AND "total" >= 0), CONSTRAINT "chk_orders_total_refunded" CHECK ("total_refunded" BETWEEN 0 AND "total"), CONSTRAINT "PK_710e2d4957aa5878dfe94e4ac2f" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_892cef7cd3962597f0a1c00679" ON "orders"  ("payment_status") `);
+        await queryRunner.query(`CREATE INDEX "IDX_290bc8842ff16ea3be0f1a74c3" ON "orders"  ("email") `);
+        await queryRunner.query(`CREATE INDEX "IDX_d39dd89d89fe12aa86872b7865" ON "orders"  ("status", "created_at") `);
+        await queryRunner.query(`CREATE TABLE "discount_redemptions" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "discount_id" uuid NOT NULL, "order_id" uuid NOT NULL, "email" character varying(255) NOT NULL, "amount" bigint NOT NULL, CONSTRAINT "PK_2efe685154f7c7deacaf6f0ef63" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_f0b26fcaa54be0216fb9ef7da0" ON "discount_redemptions"  ("discount_id", "email") `);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_8c90047f93295bf305c6900841" ON "discount_redemptions"  ("discount_id", "order_id") `);
+        await queryRunner.query(`CREATE TABLE "fulfillments" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "order_id" uuid NOT NULL, "status" character varying(20) NOT NULL DEFAULT 'success', "carrier" character varying(80), "tracking_number" character varying(120), "tracking_url" character varying(500), "shipped_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL, CONSTRAINT "PK_cb1805f0398d3d001737de76df3" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_ad58a06518e16ce0aa37ba1566" ON "fulfillments"  ("order_id") `);
+        await queryRunner.query(`CREATE TABLE "order_lines" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "order_id" uuid NOT NULL, "variant_id" uuid NOT NULL, "product_id" uuid NOT NULL, "sku" character varying(100), "title" character varying(255) NOT NULL, "variant_title" character varying(255) NOT NULL, "image_url" character varying(1000), "unit_price" bigint NOT NULL, "quantity" integer NOT NULL, "line_total" bigint NOT NULL, "fulfilled_quantity" integer NOT NULL DEFAULT '0', "refunded_quantity" integer NOT NULL DEFAULT '0', "reserved_quantity" integer NOT NULL DEFAULT '0', CONSTRAINT "chk_order_lines_quantity" CHECK ("quantity" > 0), CONSTRAINT "chk_order_lines_fulfilled" CHECK ("fulfilled_quantity" <= "quantity"), CONSTRAINT "chk_order_lines_refunded" CHECK ("refunded_quantity" <= "quantity"), CONSTRAINT "chk_order_lines_reserved" CHECK ("reserved_quantity" BETWEEN 0 AND "quantity"), CONSTRAINT "PK_627dcd7f1d707de4df241b2da6b" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_6a619803439ea92778cafc8fb5" ON "order_lines"  ("order_id") `);
+        await queryRunner.query(`CREATE TABLE "fulfillment_lines" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "fulfillment_id" uuid NOT NULL, "order_line_id" uuid NOT NULL, "quantity" integer NOT NULL, CONSTRAINT "chk_fulfillment_lines_quantity" CHECK ("quantity" > 0), CONSTRAINT "PK_1ce1c1b5f30fe2de4bc66e4485d" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_96ef84310b92268203cc4e2ad1" ON "fulfillment_lines"  ("order_line_id") `);
+        await queryRunner.query(`CREATE INDEX "IDX_0880f35f6decb715b6f5eee16d" ON "fulfillment_lines"  ("fulfillment_id") `);
+        await queryRunner.query(`CREATE TABLE "idempotency_keys" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "scope" character varying(40) NOT NULL, "key" character varying(120) NOT NULL, "request_hash" character(64) NOT NULL, "status" character varying(12) NOT NULL DEFAULT 'in_progress', "response_status" integer, "response" jsonb, CONSTRAINT "PK_8ad20779ad0411107a56e53d0f6" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_15de2f76fa9f27ad8f33098360" ON "idempotency_keys"  ("scope", "key") `);
+        await queryRunner.query(`CREATE TABLE "order_events" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "order_id" uuid NOT NULL, "type" character varying(40) NOT NULL, "data" jsonb NOT NULL DEFAULT '{}', "actor_type" character varying(20) NOT NULL, "actor_id" uuid, "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_cc1b82b0fcf1be577d9d7ecbf8b" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_94dcb98fcac804e1a0a357a56d" ON "order_events"  ("order_id", "created_at") `);
+        await queryRunner.query(`CREATE TABLE "processed_events" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "provider" character varying(20) NOT NULL, "event_id" character varying(120) NOT NULL, "processed_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_a08d68aa0747daea9efd2ddea53" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_a1cb2fc867ba3e8902d844fd85" ON "processed_events"  ("provider", "event_id") `);
+        await queryRunner.query(`CREATE TABLE "refunds" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "order_id" uuid NOT NULL, "amount" bigint NOT NULL, "reason" character varying(255), "restocked" boolean NOT NULL DEFAULT false, "provider_status" character varying(20) NOT NULL DEFAULT 'manual', "actor_id" uuid, CONSTRAINT "chk_refunds_amount_positive" CHECK ("amount" > 0), CONSTRAINT "PK_5106efb01eeda7e49a78b869738" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_a42db6369017df60549539f556" ON "refunds"  ("order_id") `);
+        await queryRunner.query(`CREATE TABLE "payments" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "order_id" uuid NOT NULL, "provider" character varying(20) NOT NULL, "provider_transaction_id" character varying(80), "reference" character varying(80) NOT NULL, "amount" bigint NOT NULL, "currency" character varying(3) NOT NULL DEFAULT 'COP', "status" character varying(20) NOT NULL DEFAULT 'pending', "raw_status" character varying(40), "method" character varying(30), CONSTRAINT "chk_payments_amount" CHECK ("amount" >= 0), CONSTRAINT "PK_197ab7af18c93fbb0c9b28b4a59" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_b085a36e96daca8e85d5134844" ON "payments"  ("provider", "provider_transaction_id") WHERE "provider_transaction_id" IS NOT NULL`);
+        await queryRunner.query(`CREATE INDEX "IDX_866ddee0e17d9385b4e3b86851" ON "payments"  ("reference") `);
+        await queryRunner.query(`CREATE INDEX "IDX_b2f7b823a21562eeca20e72b00" ON "payments"  ("order_id") `);
+        await queryRunner.query(`CREATE TABLE "refund_lines" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "refund_id" uuid NOT NULL, "order_line_id" uuid NOT NULL, "quantity" integer NOT NULL, CONSTRAINT "chk_refund_lines_quantity" CHECK ("quantity" > 0), CONSTRAINT "PK_4e0a4706ea406fbd407c0367682" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_8b6857f001cd0195f92a7acab3" ON "refund_lines"  ("order_line_id") `);
+        await queryRunner.query(`CREATE INDEX "IDX_2d4c99011dd86623390bf6eeb0" ON "refund_lines"  ("refund_id") `);
+        await queryRunner.query(`CREATE TABLE "shipping_zones" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "name" character varying(120) NOT NULL, "departments" text array NOT NULL DEFAULT '{}', "is_active" boolean NOT NULL DEFAULT true, CONSTRAINT "UQ_c4ba96a0a5bc5cbe2a5d2f546db" UNIQUE ("name"), CONSTRAINT "PK_e55857b9198ec611b75d72ff958" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "shipping_rates" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "zone_id" uuid NOT NULL, "name" character varying(120) NOT NULL, "price" bigint NOT NULL, "free_over_subtotal" bigint, "min_days" integer, "max_days" integer, "is_active" boolean NOT NULL DEFAULT true, "position" integer NOT NULL DEFAULT '0', CONSTRAINT "chk_shipping_rates_price" CHECK ("price" >= 0), CONSTRAINT "PK_c97b830633433697b24df68885a" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_b2381c02c9f8ad583e61142ac4" ON "shipping_rates"  ("zone_id", "position") `);
+        await queryRunner.query(`CREATE TABLE "tax_settings" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT now(), "prices_include_tax" boolean NOT NULL DEFAULT true, "rate_percent" numeric(5,2) NOT NULL DEFAULT '19.00', "label" character varying(40) NOT NULL DEFAULT 'IVA', CONSTRAINT "PK_9454b1752ef80453c7563e4aaaa" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`ALTER TABLE "cart_lines" ADD CONSTRAINT "FK_41ddbb6bf3c82ea6ad0f9fe0353" FOREIGN KEY ("cart_id") REFERENCES "carts"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "cart_lines" ADD CONSTRAINT "FK_7acba23c479d9986b5dd08df78a" FOREIGN KEY ("variant_id") REFERENCES "variants"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "discount_redemptions" ADD CONSTRAINT "FK_465af58d6d238d3e0b9af881b6e" FOREIGN KEY ("discount_id") REFERENCES "discounts"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "discount_redemptions" ADD CONSTRAINT "FK_d500b50fee7c260fed5ce542d68" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "fulfillments" ADD CONSTRAINT "FK_ad58a06518e16ce0aa37ba1566e" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "order_lines" ADD CONSTRAINT "FK_6a619803439ea92778cafc8fb54" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "fulfillment_lines" ADD CONSTRAINT "FK_0880f35f6decb715b6f5eee16d3" FOREIGN KEY ("fulfillment_id") REFERENCES "fulfillments"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "fulfillment_lines" ADD CONSTRAINT "FK_96ef84310b92268203cc4e2ad14" FOREIGN KEY ("order_line_id") REFERENCES "order_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "order_events" ADD CONSTRAINT "FK_b33cbf9a59cbee112d94bcb59de" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "refunds" ADD CONSTRAINT "FK_a42db6369017df60549539f5567" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "payments" ADD CONSTRAINT "FK_b2f7b823a21562eeca20e72b006" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "refund_lines" ADD CONSTRAINT "FK_2d4c99011dd86623390bf6eeb08" FOREIGN KEY ("refund_id") REFERENCES "refunds"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "refund_lines" ADD CONSTRAINT "FK_8b6857f001cd0195f92a7acab32" FOREIGN KEY ("order_line_id") REFERENCES "order_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "shipping_rates" ADD CONSTRAINT "FK_815ef893e8b41030146099282ac" FOREIGN KEY ("zone_id") REFERENCES "shipping_zones"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`INSERT INTO "tax_settings" DEFAULT VALUES`);
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`ALTER TABLE "shipping_rates" DROP CONSTRAINT "FK_815ef893e8b41030146099282ac"`);
+        await queryRunner.query(`ALTER TABLE "refund_lines" DROP CONSTRAINT "FK_8b6857f001cd0195f92a7acab32"`);
+        await queryRunner.query(`ALTER TABLE "refund_lines" DROP CONSTRAINT "FK_2d4c99011dd86623390bf6eeb08"`);
+        await queryRunner.query(`ALTER TABLE "payments" DROP CONSTRAINT "FK_b2f7b823a21562eeca20e72b006"`);
+        await queryRunner.query(`ALTER TABLE "refunds" DROP CONSTRAINT "FK_a42db6369017df60549539f5567"`);
+        await queryRunner.query(`ALTER TABLE "order_events" DROP CONSTRAINT "FK_b33cbf9a59cbee112d94bcb59de"`);
+        await queryRunner.query(`ALTER TABLE "fulfillment_lines" DROP CONSTRAINT "FK_96ef84310b92268203cc4e2ad14"`);
+        await queryRunner.query(`ALTER TABLE "fulfillment_lines" DROP CONSTRAINT "FK_0880f35f6decb715b6f5eee16d3"`);
+        await queryRunner.query(`ALTER TABLE "order_lines" DROP CONSTRAINT "FK_6a619803439ea92778cafc8fb54"`);
+        await queryRunner.query(`ALTER TABLE "fulfillments" DROP CONSTRAINT "FK_ad58a06518e16ce0aa37ba1566e"`);
+        await queryRunner.query(`ALTER TABLE "discount_redemptions" DROP CONSTRAINT "FK_d500b50fee7c260fed5ce542d68"`);
+        await queryRunner.query(`ALTER TABLE "discount_redemptions" DROP CONSTRAINT "FK_465af58d6d238d3e0b9af881b6e"`);
+        await queryRunner.query(`ALTER TABLE "cart_lines" DROP CONSTRAINT "FK_7acba23c479d9986b5dd08df78a"`);
+        await queryRunner.query(`ALTER TABLE "cart_lines" DROP CONSTRAINT "FK_41ddbb6bf3c82ea6ad0f9fe0353"`);
+        await queryRunner.query(`DROP TABLE "tax_settings"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_b2381c02c9f8ad583e61142ac4"`);
+        await queryRunner.query(`DROP TABLE "shipping_rates"`);
+        await queryRunner.query(`DROP TABLE "shipping_zones"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_2d4c99011dd86623390bf6eeb0"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_8b6857f001cd0195f92a7acab3"`);
+        await queryRunner.query(`DROP TABLE "refund_lines"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_b2f7b823a21562eeca20e72b00"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_866ddee0e17d9385b4e3b86851"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_b085a36e96daca8e85d5134844"`);
+        await queryRunner.query(`DROP TABLE "payments"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_a42db6369017df60549539f556"`);
+        await queryRunner.query(`DROP TABLE "refunds"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_a1cb2fc867ba3e8902d844fd85"`);
+        await queryRunner.query(`DROP TABLE "processed_events"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_94dcb98fcac804e1a0a357a56d"`);
+        await queryRunner.query(`DROP TABLE "order_events"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_15de2f76fa9f27ad8f33098360"`);
+        await queryRunner.query(`DROP TABLE "idempotency_keys"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_0880f35f6decb715b6f5eee16d"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_96ef84310b92268203cc4e2ad1"`);
+        await queryRunner.query(`DROP TABLE "fulfillment_lines"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_6a619803439ea92778cafc8fb5"`);
+        await queryRunner.query(`DROP TABLE "order_lines"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_ad58a06518e16ce0aa37ba1566"`);
+        await queryRunner.query(`DROP TABLE "fulfillments"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_8c90047f93295bf305c6900841"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_f0b26fcaa54be0216fb9ef7da0"`);
+        await queryRunner.query(`DROP TABLE "discount_redemptions"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_d39dd89d89fe12aa86872b7865"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_290bc8842ff16ea3be0f1a74c3"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_892cef7cd3962597f0a1c00679"`);
+        await queryRunner.query(`DROP TABLE "orders"`);
+        await queryRunner.query(`DROP TABLE "discounts"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_f796d0a65455dff02c7a18de12"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_7acba23c479d9986b5dd08df78"`);
+        await queryRunner.query(`DROP TABLE "cart_lines"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_43c12e63de56cae6991c9c59ab"`);
+        await queryRunner.query(`DROP TABLE "carts"`);
+        await queryRunner.query(`DROP SEQUENCE IF EXISTS "order_number_seq"`);
+    }
+
+}

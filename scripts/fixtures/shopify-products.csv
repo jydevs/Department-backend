@@ -1,0 +1,7 @@
+Handle,Title,Body (HTML),Vendor,Type,Tags,Published,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Variant SKU,Variant Grams,Variant Inventory Tracker,Variant Inventory Qty,Variant Inventory Policy,Variant Price,Variant Compare At Price,Variant Barcode,Image Src,Image Position,Image Alt Text,SEO Title,SEO Description,Status
+camiseta-basica,Camiseta Basica,"<p>Algodon <strong>100%</strong> suave.</p><script>alert('xss')</script><img src=""https://cdn.example.com/a.jpg"" onerror=""alert(1)"">",Department,Camisetas,"basicos, verano",true,Talla,S,Color,Negro,CAM-BAS-S-NEG,180,shopify,10,deny,59000.00,79000,,https://cdn.example.com/camiseta-1.jpg,1,Camiseta negra frente,Camiseta basica,Camiseta de algodon,active
+camiseta-basica,,,,,,,,M,,Negro,CAM-BAS-M-NEG,190,shopify,5,deny,59000,79000,,https://cdn.example.com/camiseta-2.jpg,2,Camiseta negra espalda,,,
+camiseta-basica,,,,,,,,L,,Blanco,CAM-BAS-L-BLA,200,shopify,0,deny,59000,,,,,,,,
+gorra-clasica,Gorra Clasica,"<p>Gorra ajustable.</p><a href=""javascript:alert(1)"">click</a>",Department,Accesorios,accesorios,false,Title,Default Title,,,GOR-CLA-UNI,120,shopify,25,deny,45000,,,https://cdn.example.com/gorra.jpg,1,Gorra clasica,,,draft
+morral-urbano,Morral Urbano,<h2>Morral</h2><p>Resistente al agua.</p>,Department,Bolsos,"bolsos, urbano",true,Title,Default Title,,,MOR-URB-UNI,600,shopify,8,continue,189000,,,https://cdn.example.com/morral-1.jpg,1,Morral urbano,,,active
+morral-urbano,,,,,,,,,,,,,,,,,,,https://cdn.example.com/morral-2.jpg,2,Morral urbano lateral,,,
