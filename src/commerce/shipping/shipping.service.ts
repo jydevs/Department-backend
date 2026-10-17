@@ -7,7 +7,7 @@ import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
 import { firstRow } from "../../common/sql/query-result";
 import { CartService } from "../cart/cart.service";
-import { zoneCoversDepartment } from "../pricing";
+import { applicableZoneDepartments } from "../pricing";
 import type {
   CreateRateInput,
   CreateZoneInput,
@@ -263,8 +263,9 @@ export class ShippingService {
     );
     const discounted = quote.subtotal - quote.discountTotal;
     const freeByDiscount = quote.discount?.type === "free_shipping";
+    const allowed = applicableZoneDepartments(rows.map((r) => r.departments), department);
     return rows
-      .filter((r) => zoneCoversDepartment(r.departments, department))
+      .filter((r) => allowed.some((z) => z.length === r.departments.length && z.every((x, k) => x === r.departments[k])))
       .map((r) => {
         const basePrice = Number(r.price);
         const freeOver = r.free_over_subtotal === null ? null : Number(r.free_over_subtotal);
