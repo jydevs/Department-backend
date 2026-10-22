@@ -131,19 +131,12 @@ export class OrdersLifecycleService {
         throw AppException.conflict("ORDER_HAS_FULFILLMENTS", "The order already has shipments and cannot be cancelled");
       }
       if (opts.restock) {
-        // Units already put back by refunds with restock must not be restocked again.
-        const restocked = await manager.query<{ order_line_id: string; qty: number }[]>(
-          `SELECT rl.order_line_id, COALESCE(SUM(rl.quantity), 0)::int AS qty
-           FROM refund_lines rl JOIN refunds r ON r.id = rl.refund_id
-           WHERE r.order_id = $1 AND r.restocked = true
-           GROUP BY rl.order_line_id`,
-          [orderId],
-        );
-        const already = new Map(restocked.map((r) => [r.order_line_id, r.qty]));
+        // Units already put back by refunds with restock must not be restocked again (restocked_quantity is per line).
         const items = lines
-          .map((l) => ({ variantId: l.variantId, quantity: l.quantity - (already.get(l.id) ?? 0) }))
+          .map((l) => ({ variantId: l.variantId, quantity: l.quantity - l.restockedQuantity }))
           .filter((i) => i.quantity > 0);
         if (items.length > 0) await this.inventory.restock(items, manager, "correction");
+        await manager.query(`UPDATE order_lines SET restocked_quantity = quantity, updated_at = $2 WHERE order_id = $1 AND restocked_quantity < quantity`, [orderId, now]);
       }
     } else {
       throw AppException.conflict("INVALID_ORDER_STATE", `An order with status ${order.status} cannot be cancelled`);

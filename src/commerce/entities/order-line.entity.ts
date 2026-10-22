@@ -6,6 +6,7 @@ import { Order } from "./order.entity";
 @Check("chk_order_lines_quantity", "\"quantity\" > 0")
 @Check("chk_order_lines_fulfilled", "\"fulfilled_quantity\" <= \"quantity\"")
 @Check("chk_order_lines_refunded", "\"refunded_quantity\" <= \"quantity\"")
+@Check("chk_order_lines_restocked", "\"restocked_quantity\" BETWEEN 0 AND \"quantity\"")
 @Check("chk_order_lines_reserved", "\"reserved_quantity\" BETWEEN 0 AND \"quantity\"")
 @Entity("order_lines")
 @Index(["orderId"])
@@ -50,6 +51,10 @@ export class OrderLine extends AppBaseEntity {
 
   @Column({ type: "integer", default: 0 })
   refundedQuantity!: number;
+
+  /** Units already put back into on_hand (refund / cancellation with restock): the same unit is never restocked twice. */
+  @Column({ type: "integer", default: 0 })
+  restockedQuantity!: number;
 
   /** Units actually reserved in inventory at checkout (0 for untracked / backorderable variants); drives commit/release. */
   @Column({ type: "integer", default: 0 })

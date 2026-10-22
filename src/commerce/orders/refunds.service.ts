@@ -53,12 +53,25 @@ export class RefundsService {
       }
 
       const lines = await lockLines(manager, orderId);
+      if (input.restock && !order.paidAt) {
+        // paid_at is only set when the reservation was committed to on_hand: expired / cancelled-before-payment orders never took stock out
+        throw AppException.conflict("RESTOCK_NOT_APPLICABLE", "This order never committed stock (it was not paid before expiring or being cancelled): restock does not apply");
+      }
       const problems: { orderLineId: string; reason: string; refundable?: number }[] = [];
       for (const item of refundLines) {
         const line = lines.get(item.orderLineId);
         if (!line) problems.push({ orderLineId: item.orderLineId, reason: "LINE_NOT_IN_ORDER" });
         else if (item.quantity > line.quantity - line.refundedQuantity) {
           problems.push({ orderLineId: item.orderLineId, reason: "QUANTITY_EXCEEDS_REFUNDABLE", refundable: line.quantity - line.refundedQuantity });
+        }
+      }
+      if (input.restock) {
+        // restocked can never exceed what was committed: a cancellation (or an earlier refund) with restock already put those units back
+        for (const item of refundLines) {
+          const line = lines.get(item.orderLineId);
+          if (line && line.restockedQuantity + item.quantity > line.quantity) {
+            problems.push({ orderLineId: item.orderLineId, reason: "ALREADY_RESTOCKED", refundable: line.quantity - line.restockedQuantity });
+          }
         }
       }
       if (problems.length > 0) {
@@ -81,6 +94,14 @@ export class RefundsService {
           if (!line) throw AppException.notFound("Order line");
           return { variantId: line.variantId, quantity: l.quantity };
         });
+        for (const l of refundLines) {
+          const done = await execUpdate(
+            manager,
+            "UPDATE order_lines SET restocked_quantity = restocked_quantity + $1 WHERE id = $2 AND order_id = $3 AND restocked_quantity + $1 <= quantity",
+            [l.quantity, l.orderLineId, orderId],
+          );
+          if (done !== 1) throw AppException.conflict("REFUND_QUANTITY_INVALID", "Quantity exceeds the units still restockable");
+        }
         await this.inventory.restock(items, manager, "returned");
       }
 

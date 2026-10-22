@@ -21,6 +21,8 @@ export interface LockedOrder {
   fulfillmentStatus: string;
   total: number;
   totalRefunded: number;
+  /** null while the stock was never committed (unpaid, expired or cancelled before payment). */
+  paidAt: Date | null;
   version: number;
 }
 
@@ -32,13 +34,14 @@ interface LockedOrderRow {
   fulfillment_status: string;
   total: string;
   total_refunded: string;
+  paid_at: Date | null;
   version: number;
 }
 
 /** Lock order: ALWAYS order first, then its lines (see lockLines). */
 export async function lockOrder(manager: EntityManager, orderId: string): Promise<LockedOrder> {
   const rows: LockedOrderRow[] = await manager.query(
-    `SELECT id, order_number, status, payment_status, fulfillment_status, total, total_refunded, version
+    `SELECT id, order_number, status, payment_status, fulfillment_status, total, total_refunded, paid_at, version
        FROM orders WHERE id = $1 FOR UPDATE`,
     [orderId],
   );
@@ -52,6 +55,7 @@ export async function lockOrder(manager: EntityManager, orderId: string): Promis
     fulfillmentStatus: row.fulfillment_status,
     total: Number(row.total),
     totalRefunded: Number(row.total_refunded),
+    paidAt: row.paid_at,
     version: row.version,
   };
 }
@@ -62,6 +66,8 @@ export interface LockedLine {
   quantity: number;
   fulfilledQuantity: number;
   refundedQuantity: number;
+  /** Units already put back into on_hand (refund with restock or cancellation with restock). */
+  restockedQuantity: number;
 }
 
 interface LockedLineRow {
@@ -70,12 +76,13 @@ interface LockedLineRow {
   quantity: number;
   fulfilled_quantity: number;
   refunded_quantity: number;
+  restocked_quantity: number;
 }
 
 /** Must be called after lockOrder, in the same transaction. Deterministic order (id) to avoid deadlocks. */
 export async function lockLines(manager: EntityManager, orderId: string): Promise<Map<string, LockedLine>> {
   const rows: LockedLineRow[] = await manager.query(
-    `SELECT id, variant_id, quantity, fulfilled_quantity, refunded_quantity
+    `SELECT id, variant_id, quantity, fulfilled_quantity, refunded_quantity, restocked_quantity
        FROM order_lines WHERE order_id = $1 ORDER BY id FOR UPDATE`,
     [orderId],
   );
@@ -88,6 +95,7 @@ export async function lockLines(manager: EntityManager, orderId: string): Promis
         quantity: r.quantity,
         fulfilledQuantity: r.fulfilled_quantity,
         refundedQuantity: r.refunded_quantity,
+        restockedQuantity: r.restocked_quantity,
       },
     ]),
   );
