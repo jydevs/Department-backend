@@ -26,12 +26,14 @@ export class CheckoutController {
     @Body() body: CheckoutDto,
     @Headers("idempotency-key") idempotencyKey: string | undefined,
     @Headers("x-cart-token") cartToken: string | undefined,
+    @Headers("authorization") authorization: string | undefined,
   ): Promise<CheckoutResponseDto> {
     const key = idempotencyKeySchema.safeParse(idempotencyKey);
     if (!key.success) throw AppException.badRequest("IDEMPOTENCY_KEY_REQUIRED", "The Idempotency-Key header is required (8 to 120 visible characters)");
     const token = cartTokenSchema.safeParse(cartToken);
     if (!token.success) throw AppException.badRequest("CART_TOKEN_REQUIRED", "The X-Cart-Token header is required");
-    return this.checkout.create(body, key.data, token.data);
+    // optional: a signed-in customer's Bearer links the order to the account (only if the e-mail is the verified one); a bad token is ignored
+    return this.checkout.create(body, key.data, token.data, authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined);
   }
 
   @Get("orders/:orderNumber")

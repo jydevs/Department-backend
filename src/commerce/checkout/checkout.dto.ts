@@ -44,7 +44,10 @@ export interface CheckoutResponseDto {
 }
 
 /** What is persisted for idempotent replays: the response WITHOUT the plaintext access token. */
-export type StoredCheckoutResponse = Omit<CheckoutResponseDto, "accessToken">;
+export type StoredCheckoutResponse = Omit<CheckoutResponseDto, "accessToken"> & {
+  /** The access token sealed with ENCRYPTION_KEY, so a replay returns the SAME token (never sent to clients). */
+  accessTokenEnc?: string;
+};
 
 export interface PublicOrderLineDto {
   variantId: string;

@@ -201,6 +201,8 @@ export class CustomerAuthService implements OnModuleInit {
         userAgent: token.userAgent,
         ip: token.ip,
       });
+      // orders placed as a guest with the verified e-mail (or without the Bearer) join the account on every session renewal
+      if (customer.emailVerifiedAt) await linkGuestOrders(manager, customer.id, customer.email);
       return { kind: "ok" as const, customerId: customer.id, refreshToken: next.token };
     });
 

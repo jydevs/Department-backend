@@ -8,11 +8,13 @@ import { AppException } from "../../common/errors/app-exception";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { TransactionService } from "../../database/transaction.service";
+import { openSecret, sealSecret } from "../../common/crypto/secret-box";
 import { rowsOf } from "../../common/sql/query-result";
 import { InventoryService } from "../../inventory/inventory.service";
 import { Cart, CartLine, Discount, DiscountRedemption, Fulfillment, Order, OrderEvent, OrderLine, Payment } from "../entities";
 import { PAYMENT_PROVIDER, PaymentProvider, type PaymentInstructions } from "../payments/payment-provider";
 import { safeEqual } from "../payments/safe-equal";
+import { CustomerTokenService } from "../../customers/auth/customer-token.service";
 import { PricingService } from "../pricing/pricing.service";
 import type { Quote } from "../pricing/pricing.types";
 import { CheckoutInput, CheckoutResponseDto, PublicOrderDto, StoredCheckoutResponse } from "./checkout.dto";
@@ -56,6 +58,7 @@ export class CheckoutService {
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
     @Inject(ENV) private readonly env: Env,
     @InjectRepository(Order) private readonly orders: Repository<Order>,
+    private readonly customerTokens: CustomerTokenService,
   ) {}
 
   /**
@@ -63,12 +66,23 @@ export class CheckoutService {
    * payment + event, discount redemption (atomic increment) and cart conversion. Any failure rolls back everything,
    * including the idempotency row, so the client can retry safely.
    *
-   * Idempotent replay: the stored response never contains the plaintext accessToken. A replay (same key + same body)
-   * returns the same order and payment instructions with a NEW accessToken and invalidates the previous one.
+   * Idempotent replay: the stored response keeps the accessToken only sealed (ENCRYPTION_KEY). A replay (same key + same body)
+   * returns the same order, payment instructions AND the same accessToken; nothing is rotated, so the first response's token stays valid.
    */
-  async create(input: CheckoutInput, idempotencyKey: string, cartToken: string): Promise<CheckoutResponseDto> {
+  async create(input: CheckoutInput, idempotencyKey: string, cartToken: string, customerBearer?: string): Promise<CheckoutResponseDto> {
     const requestHash = sha256Hex(canonicalize(input));
-    return this.transactions.run((manager) => this.createInTransaction(manager, input, idempotencyKey, cartToken, requestHash));
+    const customerId = customerBearer ? await this.customerTokens.verify(customerBearer) : null;
+    return this.transactions.run((manager) => this.createInTransaction(manager, input, idempotencyKey, cartToken, requestHash, customerId));
+  }
+
+  /** The signed-in customer owns the order only when the checkout e-mail is their VERIFIED account e-mail (never link by claim alone). */
+  private async linkableCustomer(manager: EntityManager, customerId: string | null, email: string): Promise<string | null> {
+    if (!customerId) return null;
+    const rows = await manager.query<{ id: string }[]>(
+      `SELECT id FROM customers WHERE id = $1 AND is_active = true AND anonymized_at IS NULL AND email_verified_at IS NOT NULL AND lower(email) = lower($2) AND deleted_at IS NULL`,
+      [customerId, email],
+    );
+    return rows[0]?.id ?? null;
   }
 
   private async createInTransaction(
@@ -77,6 +91,7 @@ export class CheckoutService {
     idempotencyKey: string,
     cartToken: string,
     requestHash: string,
+    signedInCustomerId: string | null,
   ): Promise<CheckoutResponseDto> {
     const now = this.clock.now();
 
@@ -143,6 +158,7 @@ export class CheckoutService {
         accessTokenHash: sha256Hex(accessToken),
         email: input.email,
         phone: input.phone ?? null,
+        customerId: await this.linkableCustomer(manager, signedInCustomerId, input.email),
         status: "pending",
         paymentStatus: "pending",
         fulfillmentStatus: "unfulfilled",
@@ -221,12 +237,14 @@ export class CheckoutService {
       total: order.total,
       currency: order.currency,
       payment: this.provider.createPayment(order),
+      accessTokenEnc: sealSecret(this.env, accessToken),
     };
     await manager.query(
       `UPDATE idempotency_keys SET status = 'done', response_status = $2, response = $3::jsonb, updated_at = $4 WHERE id = $1`,
       [idem.id, CREATED, JSON.stringify(stored), now],
     );
-    return { ...stored, accessToken };
+    const { accessTokenEnc: _sealed, ...publicResponse } = stored;
+    return { ...publicResponse, accessToken };
   }
 
   private async replay(manager: EntityManager, response: unknown, now: Date): Promise<CheckoutResponseDto> {
@@ -235,13 +253,17 @@ export class CheckoutService {
     if (current[0]?.status !== "pending") {
       throw AppException.conflict("ORDER_NOT_PAYABLE", "This order can no longer be paid");
     }
+    const { accessTokenEnc, ...publicResponse } = response;
+    const sameToken = accessTokenEnc ? openSecret(this.env, accessTokenEnc) : null;
+    if (sameToken) return { ...publicResponse, accessToken: sameToken };
+    // legacy rows (stored before the token was sealed) or an unreadable seal: issue a new token, as before
     const accessToken = randomBytes(32).toString("base64url");
     await manager.query(`UPDATE orders SET access_token_hash = $2, version = version + 1, updated_at = $3 WHERE id = $1`, [
       response.orderId,
       sha256Hex(accessToken),
       now,
     ]);
-    return { ...response, accessToken };
+    return { ...publicResponse, accessToken };
   }
 
   private assertPurchasable(quote: Quote): void {
