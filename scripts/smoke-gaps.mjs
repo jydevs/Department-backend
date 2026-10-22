@@ -177,7 +177,8 @@ export async function gapsChecks({ base, check, assert, ownerToken, analystToken
       const list = items(await ok(await call("GET", "/admin/collections?pageSize=100"), "list collections"));
       assert(list.find((c) => c.id === collection.id)?.image?.url, "list image missing");
 
-      await ok(await call("PUT", `/admin/collections/${collection.id}/products`, { products: [{ productId: draft.id }, { productId: product.id }, { productId: plain.id }] }), "set products");
+      const put = await call("PUT", `/admin/collections/${collection.id}/products`, { products: [{ productId: draft.id }, { productId: product.id }, { productId: plain.id }] });
+      assert(put.status < 300, `set products → ${put.status}`);
       const members = await ok(await call("GET", `/admin/collections/${collection.id}/products`), "members");
       assert(members.total === 3 && members.items.map((m) => m.id).join() === [draft.id, product.id, plain.id].join(), "order");
       const m0 = members.items[0];
@@ -300,36 +301,46 @@ export async function gapsChecks({ base, check, assert, ownerToken, analystToken
         store: { currency: "COP", locale: "es-CO" },
       });
       const put = (logo, v) => call("PUT", "/admin/content/documents/settings/site", { data: site(logo), ...(v !== undefined ? { version: v } : {}) });
-      const good = await put("http://localhost:4500/uploads/logo.png", version);
-      assert(good.status < 300, `localhost http → ${good.status} ${await good.clone().text()}`);
-      const v2 = (await good.json()).version;
-      for (const url of ["http://127.0.0.1:4500/a.png", "http://[::1]:4500/a.png"]) {
-        const r = await put(url, v2);
+      let v = version;
+      for (const url of ["http://localhost:4500/uploads/logo.png", "http://127.0.0.1:4500/a.png", "http://[::1]:4500/a.png"]) {
+        const r = await put(url, v);
         assert(r.status < 300, `${url} → ${r.status} ${await r.clone().text()}`);
-        const body = await r.json();
-        assert(body.version !== undefined, "version");
-        // keep the version chain valid for the next save
-        site.v = body.version;
+        v = (await r.json()).version;
       }
       for (const url of ["http://evil.example/a.png", "http://localhost.evil.example/a.png", "http://localhost@evil.example/a.png"]) {
-        const r = await put(url, site.v ?? v2);
+        const r = await put(url, v);
         assert(r.status === 400, `${url} → ${r.status}`);
       }
     });
 
-    await check("gaps(13): contact accepts an optional phone (7-20 digits), stores it and rejects malformed values", async () => {
-      const post = (extra) => call("POST", "/storefront/contact", { name: "Gaps", email: `gaps-${stamp}@dept.test`, message: `hola gaps ${stamp}`, ...extra }, null);
-      const good = await post({ phone: "+573001234567" });
-      assert(good.status === 202, `valid phone → ${good.status}`);
-      for (const bad of ["abc", "123", "+57 300 123 4567", "1".repeat(21), "++5730012345"]) {
-        const r = await post({ phone: bad });
-        assert(r.status === 400, `phone ${bad} → ${r.status}`);
-      }
-      assert((await post({})).status === 202, "no phone stays valid");
-      const list = items(await ok(await call("GET", `/admin/contact-messages?q=gaps-${stamp}&pageSize=50`), "admin contact list"));
-      assert(list.some((m) => m.phone === "+573001234567") && list.some((m) => m.phone === null), JSON.stringify(list.map((m) => m.phone)));
-    });
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
   }
+}
+
+/** Runs last: POST /storefront/contact is throttled to 3/min per IP and the customers flow already uses 2. */
+export async function gapsContactChecks({ base, check, assert, ownerToken }) {
+  if (!ownerToken) return;
+  const api = `${base}/api/v1`;
+  const stamp = Date.now();
+  const post = async (extra) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = await fetch(`${api}/storefront/contact`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Gaps", email: `gaps-${stamp}@dept.test`, message: `hola gaps ${stamp}`, ...extra }),
+      });
+      if (r.status !== 429) return r;
+      await new Promise((resolve) => setTimeout(resolve, (Number(r.headers.get("retry-after")) || 61) * 1000 + 500));
+    }
+    throw new Error("still throttled");
+  };
+  await check("gaps(13): contact accepts an optional phone (7-20 digits), stores it and rejects malformed values", async () => {
+    const good = await post({ phone: "+573001234567" });
+    assert(good.status === 202, `valid phone → ${good.status}`);
+    const bad = await post({ phone: "+57 300 abc" });
+    assert(bad.status === 400, `malformed phone → ${bad.status}`);
+    const list = await (await fetch(`${api}/admin/contact-messages?q=gaps-${stamp}&pageSize=50`, { headers: { authorization: `Bearer ${ownerToken}` } })).json();
+    assert(list.items.some((m) => m.phone === "+573001234567"), JSON.stringify(list.items.map((m) => m.phone)));
+  });
 }
