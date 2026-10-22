@@ -3,8 +3,7 @@ import { VersionedEntity } from "../../database/base.entity";
 import { Variant } from "../../catalog/entities/variant.entity";
 import { Location } from "./location.entity";
 
-@Check("chk_inventory_on_hand_nonneg", "\"on_hand\" >= 0")
-@Check("chk_inventory_reserved_range", "\"reserved\" >= 0 AND \"reserved\" <= \"on_hand\"")
+@Check("chk_inventory_reserved_range", "\"reserved\" >= 0 AND \"reserved\" <= GREATEST(\"on_hand\", 0)")
 @Entity("inventory_levels")
 @Index(["variantId"])
 @Index(["locationId"])
@@ -32,6 +31,6 @@ export class InventoryLevel extends VersionedEntity {
 }
 
 /**
- * NOTE: CHECK constraints (onHand >= 0) and (reserved >= 0 AND reserved <= onHand)
- * are created in migration, not via decorator
+ * NOTE: on_hand may be negative only for variants that track inventory AND allow backorder (see InventoryService.commitBackordered);
+ * the CHECK (reserved >= 0 AND reserved <= GREATEST(on_hand, 0)) is created in migration, not via decorator
  */

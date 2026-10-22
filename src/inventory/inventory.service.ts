@@ -271,7 +271,8 @@ export class InventoryService {
       const newOnHand = row.on_hand + delta;
 
       if (delta === 0) throw AppException.badRequest("NO_CHANGE", "The adjustment does not change on_hand");
-      if (newOnHand < 0) {
+      // only backorderable, tracked variants may owe units (negative on_hand)
+      if (newOnHand < 0 && !(variant.trackInventory && variant.allowBackorder)) {
         throw AppException.conflict("INSUFFICIENT_STOCK", "Cannot reduce on_hand below 0", { onHand: row.on_hand, delta });
       }
       if (newOnHand < row.reserved) {
@@ -446,6 +447,7 @@ export class InventoryService {
   private async trackedItems(
     items: { variantId: string; quantity: number }[],
     manager: EntityManager,
+    includeBackorder = false,
   ): Promise<{ variantId: string; quantity: number }[]> {
     if (items.length === 0) return [];
     const variants = await manager.getRepository(Variant).find({ where: { id: In(items.map((i) => i.variantId)) } });
@@ -453,7 +455,7 @@ export class InventoryService {
     return items.filter((item) => {
       const v = byId.get(item.variantId);
       if (!v) throw AppException.notFound("Variant");
-      return v.trackInventory && !v.allowBackorder;
+      return v.trackInventory && (includeBackorder || !v.allowBackorder);
     });
   }
 
@@ -610,6 +612,66 @@ export class InventoryService {
   }
 
   /**
+   * Variants that track inventory AND allow backorder are never reserved, so their units were never taken out of `on_hand`.
+   * When the order is paid this takes them out: free stock first, the rest as a negative `on_hand` (units owed) at the default
+   * location. Variants whose policy is different are skipped (reserve/commit already handled them).
+   */
+  async commitBackordered(items: { variantId: string; quantity: number }[], manager: EntityManager): Promise<void> {
+    if (items.length === 0) return;
+    const normalized = this.normalizeItems(items);
+    const variants = await manager.getRepository(Variant).find({ where: { id: In(normalized.map((i) => i.variantId)) } });
+    const byId = new Map(variants.map((v) => [v.id, v]));
+    const targets = normalized.filter((i) => {
+      const v = byId.get(i.variantId);
+      return !!v && v.trackInventory && v.allowBackorder;
+    });
+    if (targets.length === 0) return;
+
+    const adjRepo = manager.getRepository(InventoryAdjustment);
+    const now = this.clock.now();
+    const record = async (variantId: string, locationId: string, delta: number, note: string | null) => {
+      const adjustment = new InventoryAdjustment();
+      adjustment.variantId = variantId;
+      adjustment.locationId = locationId;
+      adjustment.delta = delta;
+      adjustment.reason = "sold";
+      adjustment.note = note;
+      adjustment.actorId = null;
+      await adjRepo.save(adjustment);
+    };
+
+    for (const item of targets) {
+      let levels = await this.lockLevels(manager, item.variantId, false);
+      if (levels.length === 0) {
+        const defaults = await manager.query<{ id: string }[]>(`SELECT id FROM locations WHERE is_default = true AND is_active = true LIMIT 1`);
+        const locationId = defaults[0]?.id;
+        if (!locationId) continue; // nowhere to account for it; never block a payment over this
+        await manager.query(
+          `INSERT INTO inventory_levels (id, variant_id, location_id, on_hand, reserved, version, created_at, updated_at)
+           VALUES ($1, $2, $3, 0, 0, 1, $4, $4) ON CONFLICT (variant_id, location_id) DO NOTHING`,
+          [uuidv7(), item.variantId, locationId, now],
+        );
+        levels = await this.lockLevels(manager, item.variantId, false);
+      }
+      let remaining = item.quantity;
+      for (const level of levels) {
+        const take = Math.min(remaining, Math.max(0, level.on_hand - level.reserved));
+        if (take <= 0) continue;
+        await manager.query(`UPDATE inventory_levels SET on_hand = on_hand - $2, version = version + 1, updated_at = $3 WHERE id = $1`, [level.id, take, now]);
+        await record(item.variantId, level.location_id, -take, null);
+        remaining -= take;
+        if (remaining === 0) break;
+      }
+      const owed = levels[0];
+      if (remaining > 0 && owed) {
+        await manager.query(`UPDATE inventory_levels SET on_hand = on_hand - $2, version = version + 1, updated_at = $3 WHERE id = $1`, [owed.id, remaining, now]);
+        await record(item.variantId, owed.location_id, -remaining, "backorder");
+      }
+    }
+    this.catalogRevalidation.invalidate(manager, { variantIds: targets.map((i) => i.variantId), stockOnly: true });
+  }
+
+  /**
    * Adds stock back to `on_hand` in the active default location (cancelled paid orders, refunds with restock).
    * Untracked / backorderable variants are skipped, like `commit`. Locks in variantId order and records an
    * InventoryAdjustment per item.
@@ -619,7 +681,8 @@ export class InventoryService {
     manager: EntityManager,
     reason: "returned" | "correction",
   ): Promise<void> {
-    const tracked = await this.trackedItems(this.normalizeItems(items), manager);
+    // backorderable tracked variants are included: commitBackordered took their units out of on_hand when the order was paid
+    const tracked = await this.trackedItems(this.normalizeItems(items), manager, true);
     if (tracked.length === 0) return;
 
     const defaults = await manager.query<{ id: string }[]>(

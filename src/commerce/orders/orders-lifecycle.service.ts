@@ -63,6 +63,11 @@ export class OrdersLifecycleService {
     const lines = await manager.getRepository(OrderLine).find({ where: { orderId } });
     // Commit what was actually reserved at checkout, regardless of the variants' CURRENT trackInventory/allowBackorder.
     await this.inventory.commitReserved(this.reservedItems(lines), manager);
+    // Tracked + backorderable variants are never reserved: their units leave on_hand now (negative allowed = units owed).
+    await this.inventory.commitBackordered(
+      lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity - l.reservedQuantity })).filter((i) => i.quantity > 0),
+      manager,
+    );
 
     const paymentRepo = manager.getRepository(Payment);
     const existing = await paymentRepo.findOne({
