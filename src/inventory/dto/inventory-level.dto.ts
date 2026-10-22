@@ -26,6 +26,8 @@ const inventoryQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   q: z.string().max(255).optional(),
   locationId: z.string().uuid().optional(),
+  variantId: z.string().uuid().optional(),
+  productId: z.string().uuid().optional(),
   /** Only when `lowStock=true`: rows with available <= lowStockThreshold (default 5). */
   lowStock: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
   lowStockThreshold: z.coerce.number().int().min(0).max(1_000_000).default(5),

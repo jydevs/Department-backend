@@ -320,7 +320,7 @@ export class InventoryService {
   }
 
   async listInventoryLevels(params: InventoryQueryParams): Promise<OffsetPage<InventoryLevelDto>> {
-    const { page, pageSize, q, locationId, lowStock, lowStockThreshold } = params;
+    const { page, pageSize, q, locationId, variantId, productId, lowStock, lowStockThreshold } = params;
     const offset = (page - 1) * pageSize;
 
     const query = this.inventoryLevelRepository
@@ -332,6 +332,8 @@ export class InventoryService {
       .where("variant.isActive = true");
 
     if (locationId) query.andWhere("level.locationId = :locationId", { locationId });
+    if (variantId) query.andWhere("level.variantId = :variantId", { variantId });
+    if (productId) query.andWhere("variant.productId = :productId", { productId });
 
     if (q) {
       query.andWhere("(variant.sku ILIKE :q ESCAPE '\\' OR variant.title ILIKE :q ESCAPE '\\')", {
