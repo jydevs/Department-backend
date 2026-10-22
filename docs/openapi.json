@@ -3409,6 +3409,771 @@
         ]
       }
     },
+    "/api/v1/storefront/customers/register": {
+      "post": {
+        "operationId": "CustomerAuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Register an account (always 202: does not reveal whether the email exists)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/login": {
+      "post": {
+        "operationId": "CustomerAuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerLoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Log in with email and password",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/refresh": {
+      "post": {
+        "operationId": "CustomerAuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "dept_ct": []
+          }
+        ],
+        "summary": "Rotate the refresh cookie and get a new access token",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/logout": {
+      "post": {
+        "operationId": "CustomerAuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "End this session (public: works even when the access token already expired)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/forgot-password": {
+      "post": {
+        "operationId": "CustomerAuthController_forgotPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Request a password reset link (always 202)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/auth/resend-verification": {
+      "post": {
+        "operationId": "CustomerAuthController_resendVerification[0]",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Resend the email verification link (always 202: does not reveal whether the account exists)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/resend-verification": {
+      "post": {
+        "operationId": "CustomerAuthController_resendVerification[1]",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Resend the email verification link (always 202: does not reveal whether the account exists)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/reset-password": {
+      "post": {
+        "operationId": "CustomerAuthController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Set a new password with a reset token; signs out every session",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/verify-email": {
+      "post": {
+        "operationId": "CustomerAuthController_verifyEmail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Verify the email address with the emailed token; sets the given password and signs out every session",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me": {
+      "get": {
+        "operationId": "CustomersAccountController_profile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My profile",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      },
+      "patch": {
+        "operationId": "CustomersAccountController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update my profile",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      },
+      "delete": {
+        "operationId": "CustomersAccountController_deleteAccount",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete (anonymize) my account; requires my password",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/change-password": {
+      "post": {
+        "operationId": "CustomersAccountController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change my password (signs out every session)",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/addresses": {
+      "get": {
+        "operationId": "CustomersAccountController_listAddresses",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My saved addresses",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      },
+      "post": {
+        "operationId": "CustomersAccountController_createAddress",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAddressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save an address (max 10)",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/addresses/{addressId}": {
+      "patch": {
+        "operationId": "CustomersAccountController_updateAddress",
+        "parameters": [
+          {
+            "name": "addressId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAddressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a saved address",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      },
+      "delete": {
+        "operationId": "CustomersAccountController_deleteAddress",
+        "parameters": [
+          {
+            "name": "addressId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a saved address",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/orders": {
+      "get": {
+        "operationId": "CustomersAccountController_listOrders",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My orders",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/orders/{orderNumber}": {
+      "get": {
+        "operationId": "CustomersAccountController_getOrder",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "minimum": 1,
+              "maximum": 2147483647,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One of my orders",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/me/data-export": {
+      "post": {
+        "operationId": "CustomersAccountController_dataExport",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Download all my personal data (Habeas Data)",
+        "tags": [
+          "storefront-customers-account"
+        ]
+      }
+    },
+    "/api/v1/admin/customers": {
+      "get": {
+        "operationId": "CustomersAdminController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 255,
+              "type": "string"
+            }
+          },
+          {
+            "name": "acceptsMarketing",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "isActive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "tag",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List customers (search, filters, pagination)",
+        "tags": [
+          "admin-customers"
+        ]
+      }
+    },
+    "/api/v1/admin/customers/export": {
+      "get": {
+        "operationId": "CustomersAdminController_export",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 255,
+              "type": "string"
+            }
+          },
+          {
+            "name": "acceptsMarketing",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "isActive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "tag",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export customers as CSV (streamed, max 50 000 rows)",
+        "tags": [
+          "admin-customers"
+        ]
+      }
+    },
+    "/api/v1/admin/customers/{id}": {
+      "get": {
+        "operationId": "CustomersAdminController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Customer detail with orders and addresses",
+        "tags": [
+          "admin-customers"
+        ]
+      },
+      "patch": {
+        "operationId": "CustomersAdminController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUpdateCustomerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update name, phone, tags, note or active flag",
+        "tags": [
+          "admin-customers"
+        ]
+      }
+    },
+    "/api/v1/admin/customers/{id}/erase": {
+      "post": {
+        "operationId": "CustomersAdminController_erase",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Anonymize a customer (irreversible; owner/admin only)",
+        "tags": [
+          "admin-customers"
+        ]
+      }
+    },
     "/api/v1/admin/orders": {
       "get": {
         "operationId": "OrdersAdminController_list",
@@ -4367,771 +5132,6 @@
         ]
       }
     },
-    "/api/v1/storefront/customers/register": {
-      "post": {
-        "operationId": "CustomerAuthController_register",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": ""
-          }
-        },
-        "summary": "Register an account (always 202: does not reveal whether the email exists)",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/login": {
-      "post": {
-        "operationId": "CustomerAuthController_login",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CustomerLoginDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Log in with email and password",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/refresh": {
-      "post": {
-        "operationId": "CustomerAuthController_refresh",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "dept_ct": []
-          }
-        ],
-        "summary": "Rotate the refresh cookie and get a new access token",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/logout": {
-      "post": {
-        "operationId": "CustomerAuthController_logout",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "End this session (public: works even when the access token already expired)",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/forgot-password": {
-      "post": {
-        "operationId": "CustomerAuthController_forgotPassword",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ForgotPasswordDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": ""
-          }
-        },
-        "summary": "Request a password reset link (always 202)",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/auth/resend-verification": {
-      "post": {
-        "operationId": "CustomerAuthController_resendVerification[0]",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResendVerificationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": ""
-          }
-        },
-        "summary": "Resend the email verification link (always 202: does not reveal whether the account exists)",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/resend-verification": {
-      "post": {
-        "operationId": "CustomerAuthController_resendVerification[1]",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResendVerificationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": ""
-          }
-        },
-        "summary": "Resend the email verification link (always 202: does not reveal whether the account exists)",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/reset-password": {
-      "post": {
-        "operationId": "CustomerAuthController_resetPassword",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResetPasswordDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Set a new password with a reset token; signs out every session",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/verify-email": {
-      "post": {
-        "operationId": "CustomerAuthController_verifyEmail",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyEmailDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Verify the email address with the emailed token; sets the given password and signs out every session",
-        "tags": [
-          "storefront-customers-auth"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me": {
-      "get": {
-        "operationId": "CustomersAccountController_profile",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "My profile",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      },
-      "patch": {
-        "operationId": "CustomersAccountController_update",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProfileDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Update my profile",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      },
-      "delete": {
-        "operationId": "CustomersAccountController_deleteAccount",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeleteAccountDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Delete (anonymize) my account; requires my password",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/change-password": {
-      "post": {
-        "operationId": "CustomersAccountController_changePassword",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CustomerChangePasswordDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Change my password (signs out every session)",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/addresses": {
-      "get": {
-        "operationId": "CustomersAccountController_listAddresses",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "My saved addresses",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      },
-      "post": {
-        "operationId": "CustomersAccountController_createAddress",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateAddressDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Save an address (max 10)",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/addresses/{addressId}": {
-      "patch": {
-        "operationId": "CustomersAccountController_updateAddress",
-        "parameters": [
-          {
-            "name": "addressId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateAddressDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Update a saved address",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      },
-      "delete": {
-        "operationId": "CustomersAccountController_deleteAddress",
-        "parameters": [
-          {
-            "name": "addressId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Delete a saved address",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/orders": {
-      "get": {
-        "operationId": "CustomersAccountController_listOrders",
-        "parameters": [
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 1000,
-              "default": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "pageSize",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 25,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "My orders",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/orders/{orderNumber}": {
-      "get": {
-        "operationId": "CustomersAccountController_getOrder",
-        "parameters": [
-          {
-            "name": "orderNumber",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "minimum": 1,
-              "maximum": 2147483647,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "One of my orders",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/storefront/customers/me/data-export": {
-      "post": {
-        "operationId": "CustomersAccountController_dataExport",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Download all my personal data (Habeas Data)",
-        "tags": [
-          "storefront-customers-account"
-        ]
-      }
-    },
-    "/api/v1/admin/customers": {
-      "get": {
-        "operationId": "CustomersAdminController_list",
-        "parameters": [
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 1000,
-              "default": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "pageSize",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 25,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 255,
-              "type": "string"
-            }
-          },
-          {
-            "name": "acceptsMarketing",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "isActive",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "tag",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 50,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "List customers (search, filters, pagination)",
-        "tags": [
-          "admin-customers"
-        ]
-      }
-    },
-    "/api/v1/admin/customers/export": {
-      "get": {
-        "operationId": "CustomersAdminController_export",
-        "parameters": [
-          {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 255,
-              "type": "string"
-            }
-          },
-          {
-            "name": "acceptsMarketing",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "isActive",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "tag",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minLength": 1,
-              "maxLength": 50,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Export customers as CSV (streamed, max 50 000 rows)",
-        "tags": [
-          "admin-customers"
-        ]
-      }
-    },
-    "/api/v1/admin/customers/{id}": {
-      "get": {
-        "operationId": "CustomersAdminController_detail",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Customer detail with orders and addresses",
-        "tags": [
-          "admin-customers"
-        ]
-      },
-      "patch": {
-        "operationId": "CustomersAdminController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminUpdateCustomerDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Update name, phone, tags, note or active flag",
-        "tags": [
-          "admin-customers"
-        ]
-      }
-    },
-    "/api/v1/admin/customers/{id}/erase": {
-      "post": {
-        "operationId": "CustomersAdminController_erase",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Anonymize a customer (irreversible; owner/admin only)",
-        "tags": [
-          "admin-customers"
-        ]
-      }
-    },
     "/api/v1/storefront/newsletter": {
       "post": {
         "operationId": "MarketingStorefrontController_subscribe",
@@ -5159,6 +5159,28 @@
     "/api/v1/storefront/newsletter/confirm": {
       "get": {
         "operationId": "MarketingStorefrontController_confirm",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "pattern": "^[A-Za-z0-9_.-]{43,90}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "MarketingStorefront"
+        ]
+      },
+      "post": {
+        "operationId": "MarketingStorefrontController_confirmPost",
         "parameters": [
           {
             "name": "token",
@@ -7347,7 +7369,8 @@
               "approved",
               "declined",
               "voided",
-              "error"
+              "error",
+              "pending"
             ]
           }
         },
@@ -7409,6 +7432,375 @@
         "required": [
           "to"
         ],
+        "additionalProperties": false
+      },
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          },
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "acceptsMarketing": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "firstName",
+          "lastName"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerLoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "ForgotPasswordDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "ResendVerificationDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "VerifyEmailDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{7,20}$",
+            "nullable": true
+          },
+          "acceptsMarketing": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomerChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "newPassword": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "additionalProperties": false
+      },
+      "CreateAddressDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{7,20}$"
+          },
+          "department": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "city": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "address1": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "address2": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "postalCode": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 12,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "CC",
+              "CE",
+              "NIT",
+              "PP"
+            ]
+          },
+          "documentNumber": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 20,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fullName",
+          "phone",
+          "department",
+          "city",
+          "address1"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateAddressDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{7,20}$"
+          },
+          "department": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "city": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "address1": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "address2": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "postalCode": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 12,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "CC",
+              "CE",
+              "NIT",
+              "PP",
+              null
+            ],
+            "nullable": true
+          },
+          "documentNumber": {
+            "type": "string",
+            "maxLength": 20,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeleteAccountDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUpdateCustomerDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+?[0-9]{7,20}$",
+            "nullable": true
+          },
+          "tags": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            }
+          },
+          "internalNote": {
+            "type": "string",
+            "maxLength": 5000,
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
         "additionalProperties": false
       },
       "OrderUpdateDto": {
@@ -7943,375 +8335,6 @@
           "ratePercent",
           "label"
         ],
-        "additionalProperties": false
-      },
-      "RegisterDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          },
-          "firstName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "lastName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "acceptsMarketing": {
-            "default": false,
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "email",
-          "password",
-          "firstName",
-          "lastName"
-        ],
-        "additionalProperties": false
-      },
-      "CustomerLoginDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "email",
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "ForgotPasswordDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "additionalProperties": false
-      },
-      "ResendVerificationDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "additionalProperties": false
-      },
-      "ResetPasswordDto": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "minLength": 20,
-            "maxLength": 200
-          },
-          "password": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "token",
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "VerifyEmailDto": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "minLength": 20,
-            "maxLength": 200
-          },
-          "password": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "token",
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "UpdateProfileDto": {
-        "type": "object",
-        "properties": {
-          "firstName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "lastName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "phone": {
-            "type": "string",
-            "pattern": "^\\+?[0-9]{7,20}$",
-            "nullable": true
-          },
-          "acceptsMarketing": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
-      "CustomerChangePasswordDto": {
-        "type": "object",
-        "properties": {
-          "currentPassword": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "newPassword": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "currentPassword",
-          "newPassword"
-        ],
-        "additionalProperties": false
-      },
-      "CreateAddressDto": {
-        "type": "object",
-        "properties": {
-          "fullName": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "phone": {
-            "type": "string",
-            "pattern": "^\\+?[0-9]{7,20}$"
-          },
-          "department": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 60,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "city": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 80,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "address1": {
-            "type": "string",
-            "minLength": 5,
-            "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "address2": {
-            "type": "string",
-            "minLength": 0,
-            "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "postalCode": {
-            "type": "string",
-            "minLength": 0,
-            "maxLength": 12,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "documentType": {
-            "type": "string",
-            "enum": [
-              "CC",
-              "CE",
-              "NIT",
-              "PP"
-            ]
-          },
-          "documentNumber": {
-            "type": "string",
-            "minLength": 4,
-            "maxLength": 20,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
-            "nullable": true
-          },
-          "isDefault": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "fullName",
-          "phone",
-          "department",
-          "city",
-          "address1"
-        ],
-        "additionalProperties": false
-      },
-      "UpdateAddressDto": {
-        "type": "object",
-        "properties": {
-          "fullName": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "phone": {
-            "type": "string",
-            "pattern": "^\\+?[0-9]{7,20}$"
-          },
-          "department": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 60,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "city": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 80,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "address1": {
-            "type": "string",
-            "minLength": 5,
-            "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "address2": {
-            "type": "string",
-            "minLength": 0,
-            "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "postalCode": {
-            "type": "string",
-            "minLength": 0,
-            "maxLength": 12,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "documentType": {
-            "type": "string",
-            "enum": [
-              "CC",
-              "CE",
-              "NIT",
-              "PP",
-              null
-            ],
-            "nullable": true
-          },
-          "documentNumber": {
-            "type": "string",
-            "maxLength": 20,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
-            "nullable": true
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
-            "nullable": true
-          },
-          "isDefault": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
-      "DeleteAccountDto": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "AdminUpdateCustomerDto": {
-        "type": "object",
-        "properties": {
-          "firstName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "lastName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
-          },
-          "phone": {
-            "type": "string",
-            "pattern": "^\\+?[0-9]{7,20}$",
-            "nullable": true
-          },
-          "tags": {
-            "maxItems": 50,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 50
-            }
-          },
-          "internalNote": {
-            "type": "string",
-            "maxLength": 5000,
-            "nullable": true
-          },
-          "isActive": {
-            "type": "boolean"
-          }
-        },
         "additionalProperties": false
       },
       "SubscribeNewsletterDto": {
