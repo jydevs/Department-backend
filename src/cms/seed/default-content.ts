@@ -153,7 +153,7 @@ const layoutTemplate = {
       },
       [
         block("col-shop", "column", { title: "Tienda", links: [], menuKey: "footer" }),
-        block("col-community", "column", { title: "Comunidad", links: [{ label: "Community", url: "/pages/community" }] }),
+        block("col-community", "column", { title: "Comunidad", links: [{ label: "Community", url: "/pages/community" }, { label: "Contacto", url: "/pages/contact" }] }),
         block("col-account", "account-links", { title: "Cuenta", accountLabel: "Mi cuenta", cartLabel: "Carrito" }),
         LEGAL_FOOTER_COLUMN,
       ],
