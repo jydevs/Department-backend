@@ -6,10 +6,11 @@ import { rowsOf } from "../../common/sql/query-result";
 import { TransactionService } from "../../database/transaction.service";
 import { Order, Payment } from "../entities";
 import { OrdersLifecycleService } from "../orders/orders-lifecycle.service";
-import { PAYMENT_PROVIDER, PaymentProvider, VerifiedEvent, WebhookHeaders } from "./payment-provider";
+import { PAYMENT_PROVIDER, ParsedTransaction, PaymentProvider, VerifiedEvent, WebhookHeaders } from "./payment-provider";
 
 export type PaymentEventOutcome =
   | "ignored"
+  | "pending"
   | "stale"
   | "duplicate"
   | "unknown_reference"
@@ -63,7 +64,34 @@ export class PaymentEventsService {
 
   async process(verified: VerifiedEvent): Promise<PaymentEventOutcome> {
     const parsed = this.provider.parseTransaction(verified);
-    if (!parsed || parsed.status === "pending") return "ignored";
+    if (!parsed) return "ignored";
+    if (parsed.status !== "pending" && !(await this.confirmWithGateway(parsed))) return "ignored";
+    return this.processParsed(verified.provider, parsed);
+  }
+
+  /**
+   * The webhook is only a hint: before acting on a final status, ask the gateway (GET /transactions/{id}) and compare
+   * reference, amount, currency and status. A failure to reach the gateway throws (500 => Wompi retries the webhook).
+   * Providers without an API (mock) skip the check.
+   */
+  private async confirmWithGateway(parsed: ParsedTransaction): Promise<boolean> {
+    if (!this.provider.fetchTransaction) return true;
+    const remote = await this.provider.fetchTransaction(parsed.providerTransactionId);
+    const same =
+      remote !== null &&
+      remote.reference === parsed.reference &&
+      remote.amountInCents === parsed.amountInCents &&
+      remote.currency === parsed.currency &&
+      remote.status === parsed.status;
+    if (!same) {
+      this.logger.warn(`Payment event for transaction ${parsed.providerTransactionId} does not match the gateway's record: ignored`);
+    }
+    return same;
+  }
+
+  /** Applies a transaction state that is already trusted (verified webhook confirmed with the gateway, or fetched from the gateway). */
+  async processParsed(providerName: VerifiedEvent["provider"], parsed: ParsedTransaction): Promise<PaymentEventOutcome> {
+    const verified = { provider: providerName };
     const now = this.clock.now();
 
     return this.transactions.run(async (manager): Promise<PaymentEventOutcome> => {
@@ -82,6 +110,19 @@ export class PaymentEventsService {
       if (!order) {
         this.logger.warn(`Payment event ${parsed.eventId} references an unknown order reference`);
         return "unknown_reference";
+      }
+
+      if (parsed.status === "pending") {
+        // Keep the transaction id: a PENDING one (PSE, Nequi…) must not be expired under the buyer's feet, and the reconciliation job follows it up.
+        const pendingPayment = await manager.getRepository(Payment).findOne({ where: { orderId: order.id, reference: order.paymentReference }, order: { createdAt: "DESC" } });
+        if (order.status === "pending" && pendingPayment && pendingPayment.status === "pending") {
+          pendingPayment.rawStatus = "PENDING";
+          pendingPayment.providerTransactionId = parsed.providerTransactionId;
+          if (parsed.method) pendingPayment.method = parsed.method;
+          await manager.getRepository(Payment).save(pendingPayment);
+          await this.lifecycle.recordEvent(manager, order.id, "payment.pending", { providerTransactionId: parsed.providerTransactionId, method: parsed.method ?? null });
+        }
+        return "pending";
       }
 
       if (parsed.amountInCents !== order.total * 100 || parsed.currency !== order.currency.toUpperCase()) {

@@ -62,7 +62,7 @@ export class MockProvider implements PaymentProvider {
   }
 
   /** Builds a signed event exactly as the mock gateway would send it (used by the dev endpoint). */
-  buildSignedEvent(order: Order, status: Exclude<PaymentStatus, "pending">): { rawBody: Buffer; headers: WebhookHeaders } {
+  buildSignedEvent(order: Order, status: PaymentStatus): { rawBody: Buffer; headers: WebhookHeaders } {
     this.assertNotProduction();
     const now = this.clock.now().getTime();
     const body = {

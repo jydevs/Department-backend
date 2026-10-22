@@ -13,6 +13,8 @@ import { InventoryService } from "../../inventory/inventory.service";
 import { Discount, DiscountRedemption, Order, OrderEvent, OrderLine, Payment } from "../entities";
 
 export const REFUND_PENDING_TAG = "refund-pending";
+/** A recent PENDING gateway transaction (PSE, Nequi…) keeps its order from expiring for this long; the reconciliation job resolves it meanwhile. */
+export const PENDING_TX_GRACE_MINUTES = 30;
 
 export interface MarkPaidPayment {
   providerTransactionId?: string;
@@ -197,8 +199,12 @@ export class OrdersLifecycleService {
   async expirePending(now: Date, batch: number): Promise<number> {
     const candidates = await this.transactions.run((m) =>
       m.query<{ id: string }[]>(
-        `SELECT id FROM orders WHERE status = 'pending' AND reserved_until IS NOT NULL AND reserved_until <= $1
-         ORDER BY reserved_until ASC LIMIT $2`,
+        `SELECT o.id FROM orders o WHERE o.status = 'pending' AND o.reserved_until IS NOT NULL AND o.reserved_until <= $1
+           AND NOT EXISTS (
+             SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.status = 'pending' AND p.provider_transaction_id IS NOT NULL
+               AND p.updated_at > $1::timestamptz - interval '${PENDING_TX_GRACE_MINUTES} minutes'
+           )
+         ORDER BY o.reserved_until ASC LIMIT $2`,
         [now, batch],
       ),
     );

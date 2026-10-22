@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Logger } from "@nestjs/common";
 import { Inject, Injectable } from "@nestjs/common";
 import { z } from "zod";
 import { AppException } from "../../common/errors/app-exception";
@@ -13,6 +14,7 @@ import {
   VerifiedEvent,
   WebhookHeaders,
   parseWompiShapedTransaction,
+  parseWompiTransactionObject,
   providerEventSchema,
 } from "./payment-provider";
 import { safeEqual } from "./safe-equal";
@@ -44,6 +46,7 @@ function valueAtPath(data: Record<string, unknown>, path: string): string | null
 @Injectable()
 export class WompiProvider implements PaymentProvider {
   readonly name = "wompi" as const;
+  private readonly logger = new Logger(WompiProvider.name);
 
   constructor(@Inject(ENV) private readonly env: Env) {}
 
@@ -53,13 +56,17 @@ export class WompiProvider implements PaymentProvider {
     if (!integritySecret || !publicKey) throw AppException.unavailable("Payments are not configured");
 
     const amountInCents = order.total * 100;
+    // Wompi integrity signature: reference + amount + currency + [expiration-time] + integrity secret. The expiration time
+    // (the order's reservation deadline) keeps a PENDING transaction (PSE, Nequi…) from outliving the stock reservation.
+    const expirationTime = order.reservedUntil && order.reservedUntil.getTime() > Date.now() ? order.reservedUntil.toISOString() : undefined;
     return {
       provider: "wompi",
       reference: order.paymentReference,
       amountInCents,
       currency: order.currency,
       publicKey,
-      signatureIntegrity: sha256Hex(`${order.paymentReference}${amountInCents}${order.currency}${integritySecret}`),
+      ...(expirationTime ? { expirationTime } : {}),
+      signatureIntegrity: sha256Hex(`${order.paymentReference}${amountInCents}${order.currency}${expirationTime ?? ""}${integritySecret}`),
       redirectUrl: new URL("/checkout/result", this.env.STOREFRONT_URL).toString(),
     };
   }
@@ -97,6 +104,33 @@ export class WompiProvider implements PaymentProvider {
 
   parseTransaction(event: VerifiedEvent): ParsedTransaction | null {
     return parseWompiShapedTransaction(event);
+  }
+
+  /** Source of truth for a transaction: the webhook is only a hint. Throws on network/HTTP errors so the caller can retry. */
+  async fetchTransaction(transactionId: string): Promise<ParsedTransaction | null> {
+    const body = await this.apiGet(`/transactions/${encodeURIComponent(transactionId)}`);
+    return parseWompiTransactionObject(body?.data);
+  }
+
+  async fetchTransactionsByReference(reference: string): Promise<ParsedTransaction[]> {
+    const body = await this.apiGet(`/transactions?reference=${encodeURIComponent(reference)}`);
+    const rows = Array.isArray(body?.data) ? (body.data as unknown[]) : [];
+    return rows.map((r) => parseWompiTransactionObject(r)).filter((t): t is ParsedTransaction => t !== null);
+  }
+
+  private async apiGet(path: string): Promise<{ data?: unknown } | null> {
+    const key = this.env.WOMPI_PUBLIC_KEY;
+    if (!key) throw new Error("Wompi is not configured");
+    const res = await fetch(`${this.env.WOMPI_API_URL.replace(/\/$/, "")}${path}`, {
+      headers: { accept: "application/json", authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      this.logger.warn(`Wompi GET ${path.split("?")[0]} -> ${res.status}`);
+      throw new Error(`Wompi API responded ${res.status}`);
+    }
+    return (await res.json()) as { data?: unknown };
   }
 
   /** `pub_test_…` keys only accept `test` events and `pub_prod_…` only `prod`, when Wompi tells us the environment. */

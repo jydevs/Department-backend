@@ -11,6 +11,7 @@ import { PricingModule } from "../pricing/pricing.module";
 import { MockPaymentController } from "./mock-payment.controller";
 import { MockProvider } from "./mock.provider";
 import { PaymentEventsService } from "./payment-events.service";
+import { PaymentReconcileScheduler } from "./payment-reconcile.scheduler";
 import { PAYMENT_PROVIDER, PaymentProvider } from "./payment-provider";
 import { WompiProvider } from "./wompi.provider";
 import { WompiWebhookController } from "./wompi-webhook.controller";
@@ -33,6 +34,7 @@ import { WompiWebhookController } from "./wompi-webhook.controller";
       useFactory: (env: Env, wompi: WompiProvider, mock: MockProvider): PaymentProvider => (env.PAYMENT_PROVIDER === "wompi" ? wompi : mock),
     },
     PaymentEventsService,
+    PaymentReconcileScheduler,
   ],
   controllers: [WompiWebhookController, MockPaymentController],
   exports: [PAYMENT_PROVIDER],

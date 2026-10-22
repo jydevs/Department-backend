@@ -13,6 +13,8 @@ export interface PaymentInstructions {
   currency: string;
   publicKey?: string;
   signatureIntegrity?: string;
+  /** ISO-8601; Wompi `expiration-time`: the transaction cannot be paid after it (= the order's reservedUntil). It is part of the integrity signature. */
+  expirationTime?: string;
   redirectUrl?: string;
   checkoutUrl?: string;
 }
@@ -52,6 +54,10 @@ export interface PaymentProvider {
   verifyWebhook(headers: WebhookHeaders, rawBody: Buffer): VerifiedEvent | null;
   /** Returns null for events that are not transaction updates (they are acknowledged and ignored). */
   parseTransaction(event: VerifiedEvent): ParsedTransaction | null;
+  /** Reconciliation with the gateway (Wompi: GET /transactions/{id}). Absent when the provider has no API to query (mock) or no keys. */
+  fetchTransaction?(transactionId: string): Promise<ParsedTransaction | null>;
+  /** Wompi: GET /transactions?reference=… newest first. */
+  fetchTransactionsByReference?(reference: string): Promise<ParsedTransaction[]>;
 }
 
 /* ── shared parsing of Wompi-shaped payloads ── */
@@ -82,7 +88,12 @@ const STATUS_MAP: Record<string, PaymentStatus> = {
 
 export function parseWompiShapedTransaction(verified: VerifiedEvent): ParsedTransaction | null {
   if (verified.event.event !== "transaction.updated") return null;
-  const parsed = transactionSchema.safeParse(verified.event.data["transaction"]);
+  return parseWompiTransactionObject(verified.event.data["transaction"]);
+}
+
+/** A Wompi transaction object (webhook `data.transaction` or the API's `data`). */
+export function parseWompiTransactionObject(raw: unknown): ParsedTransaction | null {
+  const parsed = transactionSchema.safeParse(raw);
   if (!parsed.success) return null;
   const tx = parsed.data;
   const rawStatus = tx.status.toUpperCase();
