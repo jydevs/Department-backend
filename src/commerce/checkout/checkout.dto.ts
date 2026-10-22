@@ -47,6 +47,10 @@ export interface CheckoutResponseDto {
 export type StoredCheckoutResponse = Omit<CheckoutResponseDto, "accessToken">;
 
 export interface PublicOrderLineDto {
+  variantId: string;
+  productId: string;
+  /** Current handle of the product (null if the product no longer exists). */
+  productHandle: string | null;
   title: string;
   variantTitle: string;
   imageUrl: string | null;
@@ -81,7 +85,8 @@ export interface PublicOrderDto {
   shippingAddress: unknown;
   lines: PublicOrderLineDto[];
   fulfillments: PublicFulfillmentDto[];
-  payment: { provider: string; status: string; method: string | null } | null;
+  /** `instructions` only while the order is `pending` (lets the buyer retry the payment with just the order token). */
+  payment: { provider: string; status: string; method: string | null; instructions: PaymentInstructions | null } | null;
   createdAt: Date;
   paidAt: Date | null;
   reservedUntil: Date | null;

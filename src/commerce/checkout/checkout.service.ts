@@ -11,7 +11,7 @@ import { TransactionService } from "../../database/transaction.service";
 import { rowsOf } from "../../common/sql/query-result";
 import { InventoryService } from "../../inventory/inventory.service";
 import { Cart, CartLine, Discount, DiscountRedemption, Fulfillment, Order, OrderEvent, OrderLine, Payment } from "../entities";
-import { PAYMENT_PROVIDER, PaymentProvider } from "../payments/payment-provider";
+import { PAYMENT_PROVIDER, PaymentProvider, type PaymentInstructions } from "../payments/payment-provider";
 import { safeEqual } from "../payments/safe-equal";
 import { PricingService } from "../pricing/pricing.service";
 import type { Quote } from "../pricing/pricing.types";
@@ -286,6 +286,15 @@ export class CheckoutService {
     await redemptionRepo.save(redemptionRepo.create({ discountId: discount.id, orderId, email, amount }));
   }
 
+  /** Payment instructions are deterministic for an order (same reference/amount); a misconfigured provider yields null. */
+  private safeInstructions(order: Order): PaymentInstructions | null {
+    try {
+      return this.provider.createPayment(order);
+    } catch {
+      return null;
+    }
+  }
+
   /* ── public order status ── */
 
   /** Public status page. The token is compared in constant time against the stored hash; a mismatch is a 404. */
@@ -299,6 +308,13 @@ export class CheckoutService {
     const lines = await manager.getRepository(OrderLine).find({ where: { orderId: order.id }, order: { createdAt: "ASC", id: "ASC" } });
     const fulfillments = await manager.getRepository(Fulfillment).find({ where: { orderId: order.id }, order: { shippedAt: "ASC" } });
     const payment = await manager.getRepository(Payment).findOne({ where: { orderId: order.id }, order: { createdAt: "DESC" } });
+    const handles = new Map<string, string>();
+    const productIds = [...new Set(lines.map((l) => l.productId))];
+    if (productIds.length > 0) {
+      const rows = await manager.query<{ id: string; handle: string }[]>(`SELECT id, handle FROM products WHERE id = ANY($1::uuid[])`, [productIds]);
+      for (const r of rows) handles.set(r.id, r.handle);
+    }
+    const instructions = order.status === "pending" && order.paymentProvider === this.provider.name ? this.safeInstructions(order) : null;
 
     return {
       orderNumber: order.orderNumber,
@@ -316,6 +332,9 @@ export class CheckoutService {
       email: order.email,
       shippingAddress: order.shippingAddress,
       lines: lines.map((l) => ({
+        variantId: l.variantId,
+        productId: l.productId,
+        productHandle: handles.get(l.productId) ?? null,
         title: l.title,
         variantTitle: l.variantTitle,
         imageUrl: l.imageUrl ?? null,
@@ -333,7 +352,7 @@ export class CheckoutService {
           trackingUrl: f.trackingUrl ?? null,
           shippedAt: f.shippedAt,
         })),
-      payment: payment ? { provider: payment.provider, status: payment.status, method: payment.method ?? null } : null,
+      payment: payment ? { provider: payment.provider, status: payment.status, method: payment.method ?? null, instructions } : null,
       createdAt: order.createdAt,
       paidAt: order.paidAt ?? null,
       reservedUntil: order.status === "pending" ? (order.reservedUntil ?? null) : null,
