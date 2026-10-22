@@ -7,7 +7,6 @@ import type { Env } from "../../config/env";
 export interface JWTPayload extends Record<string, unknown> {
   sub: string; // staffUserId
   role: string;
-  pv?: number; // passwordVersion (optional, validated against DB)
 }
 
 /**

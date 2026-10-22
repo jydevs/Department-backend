@@ -54,7 +54,7 @@ Se validan con Zod al arrancar (`src/config/env.ts`): si falta o está mal una, 
 | Fase | Variables |
 | --- | --- |
 | 0 · Base | `NODE_ENV`, `PORT`, `LOG_LEVEL`, `GIT_SHA`, `DATABASE_URL`, `DATABASE_SSL` **[PROD]** (`require`/`verify-full`), `DATABASE_CA_CERT`, `DATABASE_POOL_MAX`, `CORS_ORIGINS`, `PUBLIC_URL`, `STOREFRONT_URL`, `ADMIN_URL` (todas `https://` en producción), `TRUST_PROXY` **[PROD]**, `DOCS_ENABLED`, `THROTTLE_TTL_MS`, `THROTTLE_LIMIT`, `UPLOAD_DIR` |
-| 1 · Identidad | `JWT_ACCESS_SECRET` **[PROD]**, `JWT_REFRESH_SECRET` **[PROD]**, `ENCRYPTION_KEY` **[PROD]**, `OWNER_EMAIL`, `OWNER_PASSWORD` (bootstrap) |
+| 1 · Identidad | `JWT_ACCESS_SECRET` **[PROD]**, `ENCRYPTION_KEY` **[PROD]**, `OWNER_EMAIL`, `OWNER_PASSWORD` (bootstrap) |
 | 3 · CMS | `PREVIEW_TOKEN_SECRET` **[PROD]**, `STOREFRONT_REVALIDATE_SECRET` **[PROD]**, `STOREFRONT_SERVER_KEY` **[PROD]** |
 | 4 · Comercio | `PAYMENT_PROVIDER` **[PROD]** (`wompi`), `MOCK_PAYMENTS_ENABLED` (**false** en producción), `ORDER_RESERVATION_MINUTES`, `WOMPI_API_URL` (en producción NO puede contener `sandbox`: `https://production.wompi.co/v1`), `WOMPI_PUBLIC_KEY` **[PROD]** (en producción debe empezar por `pub_prod_`; la API no arranca con claves de prueba), `WOMPI_INTEGRITY_SECRET` **[PROD]**, `WOMPI_EVENTS_SECRET` **[PROD]** |
 | 5 · Clientes/correo | `MAIL_TRANSPORT` **[PROD]** (`smtp`), `SMTP_URL` **[PROD]**, `MAIL_FROM`, `CUSTOMER_JWT_SECRET` **[PROD]** |
@@ -143,7 +143,7 @@ y `docker-compose.yml` de ejemplo (API + postgres:16). Validar en CI o en tu hos
 - [ ] `DATABASE_URL` (sin `sslmode`), `DATABASE_SSL=require|verify-full`, `DATABASE_CA_CERT` si aplica, `DATABASE_POOL_MAX` acorde al plan de la BD y al número de instancias.
 - [ ] `PUBLIC_URL`, `STOREFRONT_URL`, `ADMIN_URL`, `CORS_ORIGINS`: todos `https://`, sin barra final en CORS.
 - [ ] `TRUST_PROXY` con los saltos reales (1 o 2).
-- [ ] Secretos únicos y aleatorios (no reutilices entre sí): `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CUSTOMER_JWT_SECRET`, `PREVIEW_TOKEN_SECRET`, `STOREFRONT_REVALIDATE_SECRET` (idéntico en el front), `STOREFRONT_SERVER_KEY` (idéntico en el servidor Next), `ENCRYPTION_KEY` (base64 de 32 bytes; **guárdala fuera de la BD**: perderla vuelve ilegibles los secretos cifrados).
+- [ ] Secretos únicos y aleatorios (no reutilices entre sí): `JWT_ACCESS_SECRET`, `CUSTOMER_JWT_SECRET`, `PREVIEW_TOKEN_SECRET`, `STOREFRONT_REVALIDATE_SECRET` (idéntico en el front), `STOREFRONT_SERVER_KEY` (idéntico en el servidor Next), `ENCRYPTION_KEY` (base64 de 32 bytes; **guárdala fuera de la BD**: perderla vuelve ilegibles los secretos cifrados).
 - [ ] Pagos: `PAYMENT_PROVIDER=wompi`, `MOCK_PAYMENTS_ENABLED=false`, `WOMPI_API_URL` de producción (sin `sandbox`), `WOMPI_PUBLIC_KEY` (`pub_prod_…`), `WOMPI_INTEGRITY_SECRET`, `WOMPI_EVENTS_SECRET`; URL de eventos configurada en Wompi.
 - [ ] Correo: `MAIL_TRANSPORT=smtp`, `SMTP_URL`, `MAIL_FROM` con dominio verificado (SPF/DKIM).
 - [ ] `DOCS_ENABLED` sin definir (apagado en producción) salvo que lo necesites.

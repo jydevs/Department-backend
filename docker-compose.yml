@@ -42,7 +42,6 @@ services:
       STOREFRONT_URL: http://localhost:3000
       ADMIN_URL: http://localhost:3001
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?openssl rand -hex 32}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?openssl rand -hex 32}
       CUSTOMER_JWT_SECRET: ${CUSTOMER_JWT_SECRET:?openssl rand -hex 32}
       PREVIEW_TOKEN_SECRET: ${PREVIEW_TOKEN_SECRET:?openssl rand -hex 32}
       STOREFRONT_REVALIDATE_SECRET: ${STOREFRONT_REVALIDATE_SECRET:?openssl rand -hex 32}

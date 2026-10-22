@@ -30,7 +30,7 @@ Exportar todo desde `src/identity/entities/index.ts`.
 - `POST /auth/logout` revoca la familia. `GET /auth/me` → usuario + permisos.
 - `POST /auth/2fa/setup` (devuelve otpauth URL), `POST /auth/2fa/enable {code}` (devuelve 8 recovery codes una sola vez), `POST /auth/2fa/disable {password,code}`.
 - `POST /auth/change-password {current,new}` (≥12 caracteres) revoca todas las familias.
-- Access token JWT (`jose`, HS256, `JWT_ACCESS_SECRET`, 15 min, claims `sub`, `role`, `pv` = passwordVersion no requerido: se valida contra BD el usuario activo). Refresh 30 días, opaco (32 bytes base64url), guardado solo como hash.
+- Access token JWT (`jose`, HS256, `JWT_ACCESS_SECRET`, 15 min, claims `sub`, `role`; el usuario y su rol se cargan de BD en cada petición: desactivarlo o cambiarle el rol surte efecto de inmediato; cambiar la contraseña revoca los refresh y el access token caduca a lo sumo a los 15 min. No existe el claim `pv`). Refresh 30 días, opaco (32 bytes base64url, no es un JWT: por eso no existe `JWT_REFRESH_SECRET`), guardado solo como hash.
 - argon2id (memory 19MiB, t=2, p=1). En dev sin secretos, derivar secreto efímero con warning en el log.
 - **Guards globales** (`APP_GUARD` en orden Throttler → `AuthGuard` → `PermissionsGuard`): `AuthGuard` respeta `@Public()`, valida Bearer, carga actor `staff` en `req.actor` y `RequestContextStore.setActor`. `PermissionsGuard` exige TODOS los permisos de `@RequirePermissions`; si un handler no es público y no declara permisos, basta con estar autenticado.
 - Exportar `AuthModule` con los guards como providers (los registra el orquestador).

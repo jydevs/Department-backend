@@ -70,7 +70,6 @@ const schema = z
 
     /* ── secrets used by later phases: optional in dev, required in production ── */
     JWT_ACCESS_SECRET: secret(32),
-    JWT_REFRESH_SECRET: secret(32),
     /** base64 of 32 random bytes: encrypts stored third-party secrets (payment keys…) */
     ENCRYPTION_KEY: z.string().optional(),
     PREVIEW_TOKEN_SECRET: secret(32),
@@ -152,7 +151,6 @@ const schema = z
     if (env.TRUST_PROXY === false) issue("TRUST_PROXY", "must be set in production (proxy hop count), otherwise req.ip is the proxy's");
     for (const key of [
       "JWT_ACCESS_SECRET",
-      "JWT_REFRESH_SECRET",
       "ENCRYPTION_KEY",
       "PREVIEW_TOKEN_SECRET",
       "STOREFRONT_REVALIDATE_SECRET",
