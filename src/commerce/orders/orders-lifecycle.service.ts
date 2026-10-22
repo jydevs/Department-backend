@@ -7,7 +7,7 @@ import { AppException } from "../../common/errors/app-exception";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { MailService } from "../../mail/mail.service";
-import { formatCop, itemsSummary, orderCustomerName, orderNumberLabel, orderUrl } from "./order-mail";
+import { formatCop, itemsSummary, orderCustomerName, orderMailLink, orderNumberLabel } from "./order-mail";
 import { TransactionService } from "../../database/transaction.service";
 import { InventoryService } from "../../inventory/inventory.service";
 import { Discount, DiscountRedemption, Order, OrderEvent, OrderLine, Payment } from "../entities";
@@ -114,7 +114,7 @@ export class OrdersLifecycleService {
           orderNumber: orderNumberLabel(order.orderNumber),
           total: formatCop(order.total),
           itemsSummary: itemsSummary(lines),
-          orderUrl: orderUrl(this.env.STOREFRONT_URL, order.orderNumber),
+          orderUrl: await orderMailLink(manager, this.env.STOREFRONT_URL, order.id, order.orderNumber),
         },
       },
       manager,
@@ -172,7 +172,7 @@ export class OrdersLifecycleService {
             customerName: orderCustomerName(order.shippingAddress),
             orderNumber: orderNumberLabel(order.orderNumber),
             reason: opts.reason,
-            orderUrl: orderUrl(this.env.STOREFRONT_URL, order.orderNumber),
+            orderUrl: await orderMailLink(manager, this.env.STOREFRONT_URL, order.id, order.orderNumber),
           },
         },
         manager,

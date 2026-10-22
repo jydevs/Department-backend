@@ -301,7 +301,15 @@ export class CheckoutService {
   async getPublicOrder(orderNumber: number, token: string): Promise<PublicOrderDto> {
     const order = await this.orders.findOne({ where: { orderNumber } });
     const expected = order?.accessTokenHash ?? sha256Hex("no-such-order");
-    const matches = safeEqual(sha256Hex(token), expected);
+    let matches = safeEqual(sha256Hex(token), expected);
+    if (order && !matches) {
+      // link from an e-mail: a token minted for THIS order (hashed in order_access_tokens, expires)
+      const mail = await this.orders.manager.query<{ id: string }[]>(
+        `SELECT id FROM order_access_tokens WHERE order_id = $1 AND token_hash = $2 AND expires_at > now() LIMIT 1`,
+        [order.id, sha256Hex(token)],
+      );
+      matches = mail.length > 0;
+    }
     if (!order || !matches) throw AppException.notFound("Order");
 
     const manager = this.orders.manager;

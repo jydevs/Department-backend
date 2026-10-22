@@ -14,4 +14,5 @@ export { Discount } from "./discount.entity";
 export { DiscountRedemption } from "./discount-redemption.entity";
 export { TaxSetting } from "./tax-setting.entity";
 export { IdempotencyKey } from "./idempotency-key.entity";
+export { OrderAccessToken } from "./order-access-token.entity";
 export { ProcessedEvent } from "./processed-event.entity";

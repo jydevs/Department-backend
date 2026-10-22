@@ -4,7 +4,7 @@ import { Clock } from "../../common/clock/clock";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { MailService } from "../../mail/mail.service";
-import { formatCop, loadOrderMailContext, orderNumberLabel, orderUrl } from "./order-mail";
+import { formatCop, loadOrderMailContext, orderMailLink, orderNumberLabel } from "./order-mail";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
 import { InventoryService } from "../../inventory/inventory.service";
@@ -174,7 +174,7 @@ export class RefundsService {
               customerName: ctx.customerName,
               orderNumber: orderNumberLabel(ctx.orderNumber),
               amount: formatCop(input.amount),
-              orderUrl: orderUrl(this.env.STOREFRONT_URL, ctx.orderNumber),
+              orderUrl: await orderMailLink(manager, this.env.STOREFRONT_URL, orderId, ctx.orderNumber),
             },
           },
           manager,
