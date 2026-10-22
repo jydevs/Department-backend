@@ -73,9 +73,9 @@ export class ContentAdminController {
     return this.content.upsertDraft(kind, key, input, parseIfMatch(ifMatch), staffId(actor));
   }
 
-  /** Pages only: soft delete. The response suggests a redirect to create. */
+  /** Pages only: soft delete (takes the page off the storefront, so it needs the same permission as publishing). The response suggests a redirect to create. */
   @Delete("documents/:kind/:key")
-  @RequirePermissions("content:write")
+  @RequirePermissions("content:publish")
   deletePage(@Param() { kind, key }: DocumentParamsDto): Promise<PageDeletedDto> {
     return this.content.deletePage(kind, key);
   }
