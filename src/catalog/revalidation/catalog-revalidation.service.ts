@@ -11,14 +11,22 @@ export interface CatalogChange {
   /** Extra tags / handles that can no longer be resolved from the DB (e.g. the previous handle after a rename). */
   productHandles?: string[];
   collectionHandles?: string[];
+  /**
+   * Only the stock of these variants moved (reserve / commit / restock / adjustment): revalidate just their product pages
+   * (and manual collections), not the whole `catalog` tag. Any other change in the same transaction still sends `catalog`.
+   */
+  stockOnly?: boolean;
 }
+
+type PendingChange = Required<Omit<CatalogChange, "stockOnly">> & { broad: boolean };
 
 /** Same whitelist the storefront applies to /api/revalidate for catalog tags. */
 const CATALOG_TAG = /^(catalog|catalog:(product|collection):[a-z0-9-]+)$/;
 const MAX_SPECIFIC_TAGS = 200;
 const PENDING_KEY = "catalogChanges";
 
-const emptyChange = (): Required<CatalogChange> => ({
+const emptyChange = (): PendingChange => ({
+  broad: false,
   productIds: [],
   variantIds: [],
   collectionIds: [],
@@ -44,7 +52,7 @@ export class CatalogRevalidationService {
   invalidate(manager: EntityManager | undefined, change: CatalogChange = {}): void {
     const data = manager?.queryRunner?.data;
     if (data && Array.isArray(data[AFTER_COMMIT_KEY])) {
-      let pending = data[PENDING_KEY] as Required<CatalogChange> | undefined;
+      let pending = data[PENDING_KEY] as PendingChange | undefined;
       if (!pending) {
         pending = emptyChange();
         data[PENDING_KEY] = pending;
@@ -59,7 +67,8 @@ export class CatalogRevalidationService {
     void this.flush(own);
   }
 
-  private merge(into: Required<CatalogChange>, change: CatalogChange): void {
+  private merge(into: PendingChange, change: CatalogChange): void {
+    if (!change.stockOnly) into.broad = true;
     into.productIds.push(...(change.productIds ?? []));
     into.variantIds.push(...(change.variantIds ?? []));
     into.collectionIds.push(...(change.collectionIds ?? []));
@@ -67,16 +76,16 @@ export class CatalogRevalidationService {
     into.collectionHandles.push(...(change.collectionHandles ?? []));
   }
 
-  private async flush(change: Required<CatalogChange>): Promise<void> {
+  private async flush(change: PendingChange): Promise<void> {
     try {
       const tags = await this.resolveTags(change);
-      await this.revalidation.notify(tags);
+      if (tags.length > 0) await this.revalidation.notify(tags);
     } catch (err) {
       this.logger.warn(`Catalog revalidation error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  private async resolveTags(change: Required<CatalogChange>): Promise<string[]> {
+  private async resolveTags(change: PendingChange): Promise<string[]> {
     const productIds = [...new Set(change.productIds)];
     const variantIds = [...new Set(change.variantIds)];
     const collectionIds = [...new Set(change.collectionIds)];
@@ -112,6 +121,7 @@ export class CatalogRevalidationService {
     ].filter((t) => CATALOG_TAG.test(t));
 
     // A huge bulk change: one generic tag is cheaper than hundreds of specific ones.
-    return specific.length > MAX_SPECIFIC_TAGS ? ["catalog"] : ["catalog", ...specific];
+    if (specific.length > MAX_SPECIFIC_TAGS) return ["catalog"];
+    return change.broad ? ["catalog", ...specific] : specific;
   }
 }

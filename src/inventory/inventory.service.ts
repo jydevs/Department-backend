@@ -309,7 +309,7 @@ export class InventoryService {
         manager,
       );
 
-      this.catalogRevalidation.invalidate(manager, { variantIds: [input.variantId] });
+      this.catalogRevalidation.invalidate(manager, { variantIds: [input.variantId], stockOnly: true });
       const product = await manager.getRepository(Product).findOne({
         where: { id: variant.productId },
         withDeleted: true,
@@ -513,7 +513,7 @@ export class InventoryService {
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_STOCK", "Not enough stock for some items", { items: short });
     }
-    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
+    if (tracked.length > 0) this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId), stockOnly: true });
     return tracked;
   }
 
@@ -555,7 +555,7 @@ export class InventoryService {
         items: short,
       });
     }
-    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
+    if (tracked.length > 0) this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId), stockOnly: true });
   }
 
   /** Commits using the CURRENT variant policy (legacy). Prefer `commitReserved` for orders. */
@@ -606,7 +606,7 @@ export class InventoryService {
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_RESERVED", "Insufficient reserved quantity", { items: short });
     }
-    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
+    if (tracked.length > 0) this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId), stockOnly: true });
   }
 
   /**
@@ -662,7 +662,7 @@ export class InventoryService {
       adjustment.actorId = null;
       await adjRepo.save(adjustment);
     }
-    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
+    if (tracked.length > 0) this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId), stockOnly: true });
   }
 
   /**
