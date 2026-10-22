@@ -783,6 +783,20 @@
         ]
       }
     },
+    "/api/v1/admin/products/facets": {
+      "get": {
+        "operationId": "ProductsController_facets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Products"
+        ]
+      }
+    },
     "/api/v1/admin/products/bulk": {
       "post": {
         "operationId": "ProductsController_bulkAction",
@@ -1204,6 +1218,53 @@
         ]
       }
     },
+    "/api/v1/admin/products/{id}/metafields/{namespace}/{key}": {
+      "delete": {
+        "operationId": "ProductMetafieldsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "namespace",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 60,
+              "pattern": "^[a-z0-9_-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 60,
+              "pattern": "^[a-z0-9_-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ProductMetafields"
+        ]
+      }
+    },
     "/api/v1/admin/collections/{id}/metafields": {
       "get": {
         "operationId": "CollectionMetafieldsController_get",
@@ -1252,6 +1313,53 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "CollectionMetafields"
+        ]
+      }
+    },
+    "/api/v1/admin/collections/{id}/metafields/{namespace}/{key}": {
+      "delete": {
+        "operationId": "CollectionMetafieldsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "namespace",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 60,
+              "pattern": "^[a-z0-9_-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 60,
+              "pattern": "^[a-z0-9_-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1403,6 +1511,29 @@
       }
     },
     "/api/v1/admin/collections/{id}/products": {
+      "get": {
+        "operationId": "CollectionsController_listProducts",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Collections"
+        ]
+      },
       "put": {
         "operationId": "CollectionsController_updateProducts",
         "parameters": [
@@ -1528,6 +1659,18 @@
               "maxLength": 80,
               "type": "string"
             }
+          },
+          {
+            "name": "available",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
           }
         ],
         "responses": {
@@ -1611,6 +1754,18 @@
             "schema": {
               "maxLength": 512,
               "type": "string"
+            }
+          },
+          {
+            "name": "available",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
             }
           }
         ],
@@ -5943,6 +6098,15 @@
                 "isActive": {
                   "default": true,
                   "type": "boolean"
+                },
+                "optionValues": {
+                  "maxItems": 3,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  }
                 }
               },
               "required": [
@@ -5950,6 +6114,11 @@
                 "price"
               ]
             }
+          },
+          "defaultVariantPrice": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000000000
           }
         },
         "required": [
@@ -6550,6 +6719,11 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
           }
         }
       },
@@ -8062,6 +8236,10 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^[+]?[0-9]{7,20}$"
           },
           "message": {
             "type": "string",
