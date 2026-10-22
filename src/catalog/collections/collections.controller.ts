@@ -11,6 +11,7 @@ import {
   UpdateCollectionProductsDto,
   PreviewRulesDto,
   PreviewRulesResponseDto,
+  CollectionProductsResponseDto,
 } from "./dto";
 
 @Controller("admin/collections")
@@ -51,6 +52,12 @@ export class CollectionsController {
   @RequirePermissions("collections:write")
   async delete(@Param() { id }: IdParamDto): Promise<void> {
     await this.collectionsService.delete(id);
+  }
+
+  @Get(":id/products")
+  @RequirePermissions("collections:read")
+  async listProducts(@Param() { id }: IdParamDto): Promise<CollectionProductsResponseDto> {
+    return this.collectionsService.listProducts(id);
   }
 
   @Put(":id/products")

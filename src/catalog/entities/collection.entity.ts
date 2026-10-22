@@ -1,10 +1,10 @@
 import { Column, Entity, Index } from "typeorm";
-import { AppBaseEntity, DeleteDateColumn } from "../../database/base.entity";
+import { VersionedEntity, DeleteDateColumn } from "../../database/base.entity";
 
 @Entity("collections")
 @Index(["handle"], { unique: true })
 @Index(["isPublished"])
-export class Collection extends AppBaseEntity {
+export class Collection extends VersionedEntity {
   @Column({ type: "varchar", length: 120, unique: true })
   handle!: string;
 

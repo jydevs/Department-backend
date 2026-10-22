@@ -13,6 +13,8 @@ const collectionUpdateSchema = z.object({
   seoTitle: z.string().max(255).nullable().optional(),
   seoDescription: z.string().max(500).nullable().optional(),
   imageMediaId: z.string().uuid().nullable().optional(),
+  /** Optional optimistic lock: when sent and different from the stored version -> 409 CONCURRENT_UPDATE. */
+  version: z.number().int().min(1).optional(),
 });
 
 export type CollectionUpdateInput = z.infer<typeof collectionUpdateSchema>;
