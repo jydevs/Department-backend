@@ -20,7 +20,7 @@ y se siembra, ya publicado, con `yarn content:seed` o al arrancar la API (`SEED_
 
 | Documento (`kind/key`) | Contenido | Componente / archivo del front |
 | --- | --- | --- |
-| `settings/site` | Marca (`brand.name`, `tagline`, `description`), tema (`theme.colors`, `theme.fonts`, `colorScheme`), SEO (`seo.titleTemplate`, `defaultTitle`, `defaultDescription`), redes (`social`, vacío: sin URLs oficiales), ticker de anuncio (`announcement`), tienda (`store`) | `src/lib/site.ts`, `app/layout.tsx` (metadata, fuentes, tokens de `globals.css`), ticker de `Header.tsx` |
+| `settings/site` | Marca (`brand.name`, `tagline`, `description`, `logoMediaUrl?` logotipo en imagen, `logoText?` texto del logotipo dibujado = "Dept", `faviconMediaUrl?` icono de la pestaña = "/favicon.svg"), tema (`theme.colors`, `theme.fonts`, `colorScheme`, `grain?` textura de grano = true), SEO (`seo.ogImageUrl?`: imagen al compartir; vacía → foto del hero), SEO (`seo.titleTemplate`, `defaultTitle`, `defaultDescription`), redes (`social`, vacío: sin URLs oficiales), ticker de anuncio (`announcement`), tienda (`store`) | `src/lib/site.ts`, `app/layout.tsx` (metadata, fuentes, tokens de `globals.css`), ticker de `Header.tsx` |
 | `menu/main` | Home · Clothes (hijos: Men, Women) · Community | `Header.tsx` (`NAV` = nivel 1; `MENU_LINKS` del menú móvil = aplanado: padre seguido de sus hijos) |
 | `menu/footer` | Home · Clothes · Men · Women | columna "Tienda" de `SiteFooter.tsx` (la sección `footer` la referencia con `menuKey: "footer"`) |
 | `template/layout` | `site-header`, `newsletter`, `footer` (secciones globales) | `Header.tsx`, `NewsletterFooter.tsx`, `SiteFooter.tsx` (+ `FooterAccountLinks`, `BackToTopButton`) |
@@ -152,6 +152,7 @@ Los iconos `eye`, `heart`, `user` son los tres del front actual.
 | `showCount` = true, `countLabel` = "piezas" | |
 | `ctaLabel?`, `ctaHref?`, `ctaVariant` | "solid"\|"outline"\|"red" = "outline" |
 | `imageUrl?`, `imageAlt?`, `alignment` | opcionales (fondo/alineación) |
+| `soldOutBadgeLabel` "Agotado", `saleBadgeLabel` "Oferta", `noPriceLabel` "Precio no disponible", `quickAddLabel` "Añadir rápido" | textos de las tarjetas de producto, string ≤80 |
 
 ### `editorial` — `components/home/EditorialBlock.tsx`
 Settings: `eyebrow?`, `heading` (líneas con `\n`), `lede?` (párrafo grande), `body` (Markdown ≤5000; línea en blanco = párrafo), `imageUrl?`, `imageAlt?`, `imageBadge?` (etiqueta roja sobre la foto),
@@ -203,7 +204,8 @@ Bloques (máx. 8): `tab` → `{ label (1–40), collectionHandle }` (pestañas "
 | `columns` | "3" \| "4" = "4" |
 | `showFilters` | boolean = true (barra Availability / Price / Ordenar) |
 | `srHeading?` | string (h2 solo lectores de pantalla, "Productos") |
-| `filterLabel` "Filtrar", `availabilityLabel` "Availability", `priceLabel` "Price", `sortLabel` "Ordenar", `optionAllLabel` "Todos", `optionInStockLabel` "En stock", `optionSoldOutLabel` "Agotado", `sortFeaturedLabel` "Destacado", `sortPriceAscLabel` "Precio: menor a mayor", `sortPriceDescLabel` "Precio: mayor a menor", `resetLabel` "Limpiar filtros", `countLabel` "artículos", `emptyTitle` "Sin resultados", `emptyText` "Prueba con otro filtro", `soldOutBadgeLabel` "Agotado", `saleBadgeLabel` "Oferta" | string ≤80 (`emptyText` ≤200) |
+| `filterLabel` "Filtrar", `availabilityLabel` "Availability", `priceLabel` "Price", `sortLabel` "Ordenar", `optionAllLabel` "Todos", `optionInStockLabel` "En stock", `optionSoldOutLabel` "Agotado", `sortFeaturedLabel` "Destacado", `sortPriceAscLabel` "Precio: menor a mayor", `sortPriceDescLabel` "Precio: mayor a menor", `resetLabel` "Limpiar filtros", `countLabel` "artículos", `emptyTitle` "Sin resultados", `emptyText` "Prueba con otro filtro", `soldOutBadgeLabel` "Agotado", `saleBadgeLabel` "Oferta", `noPriceLabel` "Precio no disponible", `quickAddLabel` "Añadir rápido" | string ≤80 (`emptyText` ≤200) |
+| `loadMoreLabel` "Ver más", `loadingMoreLabel` "Cargando...", `loadMoreErrorLabel` "No se pudo cargar. Inténtalo de nuevo." | botón de paginación de la colección (≤80, error ≤200) |
 
 ### `product-detail` — `ProductInfo`, `StickyAddToCart`
 Settings: `breadcrumbHomeLabel` "Inicio", `breadcrumbCollectionLabel` "Clothes", `breadcrumbCollectionHandle` "all", `sizeLabel` "Talla", `quantityLabel` "Cantidad", `maxQuantity` 1–50 = 10,
@@ -219,13 +221,19 @@ Bloques (máx. 8): `suggestion` → `{ label, url }`.
 ### `cart-drawer` — `components/layout/CartDrawer.tsx`
 Settings: `title` "Carrito", `closeLabel` "Cerrar", `emptyTitle` "Tu carrito está vacío", `emptyText` "¿Tienes una cuenta? Inicia sesión para pagar más rápido.",
 `emptyTextHighlight?` ("Inicia sesión": subcadena subrayada que abre el panel de cuenta), `continueLabel` "Seguir comprando", `checkoutLabel` "Finalizar compra", `checkoutHref` "/checkout",
-`subtotalLabel` "Subtotal", `sizeLabel` "Talla", `removeLabel` "Eliminar", `decreaseLabel` "Quitar una unidad", `increaseLabel` "Añadir una unidad".
+`subtotalLabel` "Subtotal", `sizeLabel` "Talla", `removeLabel` "Eliminar", `decreaseLabel` "Quitar una unidad", `increaseLabel` "Añadir una unidad",
+`unavailableMessage` "Ya no está disponible. Elimínalo para continuar.", `discountLabel` "Descuento", `shippingLabel` "Envío", `shippingText` "Se calcula al pagar", `taxLabel` "IVA", `totalLabel` "Total estimado",
+`taxIncludedNote` "Precios con IVA incluido. El envío se suma al elegir tu dirección.", caja de descuento: `discountCodeLabel` "Código de descuento", `discountApplyLabel` "Aplicar", `discountApplyingLabel` "Aplicando…", `discountRemoveLabel` "Quitar", `discountEmptyMessage` "Escribe tu código de descuento.".
 
 ### `error-hero` — `app/not-found.tsx`
 Settings: `eyebrow?` ("Error"), `code` (1–10 caracteres, "404": el front dibuja primer y último carácter con trazo y el del medio en color de acento), `ariaLabel?`.
 
 ### `rich-text` — texto libre (páginas)
 Settings: `heading?`, `body` (Markdown ≤5000), `alignment` = "left", `maxWidth` "narrow"|"normal"|"wide" = "normal".
+
+## Campos añadidos a bases ya sembradas
+
+La semilla nunca pisa documentos existentes. Para que una base sembrada antes reciba los campos editables nuevos, el arranque de la API (`SEED_DEFAULT_CONTENT=true`) y `yarn content:seed` ejecutan `ensureEditableDefaults` (`src/cms/seed/ensure-editable-defaults.ts`): añade a `settings/site` (`brand.logoText`, `brand.faviconMediaUrl`, `theme.grain`), `template/home` (`campaign`), `template/collection` y `template/product` (`product-grid`) y `template/cart` (`cart-drawer`) SOLO las claves que faltan, con el valor que la tienda mostraba fijo. Nunca sobrescribe; si el documento estaba publicado publica una versión nueva con la nota «Campos editables nuevos (valores por defecto)» (auditoría `system`), un borrador con cambios pendientes los conserva, y no se repite en ese documento (la nota sirve de marca).
 
 ## Catálogo demo
 
