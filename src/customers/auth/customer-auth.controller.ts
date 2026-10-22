@@ -1,4 +1,4 @@
-import { AUTH_THROTTLE_LIMIT } from "../../common/throttle/auth-throttle";
+import { authThrottleLimit } from "../../common/throttle/auth-throttle";
 import { Body, Controller, HttpCode, Inject, Post, Req, Res } from "@nestjs/common";
 import { ApiCookieAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
@@ -36,7 +36,7 @@ export class CustomerAuthController {
   @Post("register")
   @Public()
   @HttpCode(202)
-  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: 60_000 } })
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
   @ApiOperation({ summary: "Register an account (always 202: does not reveal whether the email exists)" })
   register(@Body() dto: RegisterDto): MessageResponse {
     this.auth.register(dto);
@@ -46,7 +46,7 @@ export class CustomerAuthController {
   @Post("login")
   @Public()
   @HttpCode(200)
-  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: 60_000 } })
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
   @ApiOperation({ summary: "Log in with email and password" })
   async login(@Body() dto: CustomerLoginDto, @Res({ passthrough: true }) res: Response): Promise<CustomerLoginResponse> {
     const { refreshToken, ...result } = await this.auth.login(dto.email, dto.password);
