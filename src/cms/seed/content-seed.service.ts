@@ -3,6 +3,7 @@ import { DataSource } from "typeorm";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { seedDefaultContent } from "./default-content";
+import { ensureEditableDefaults } from "./ensure-editable-defaults";
 import { ensureLegalLinks } from "./ensure-legal-links";
 
 /**
@@ -24,6 +25,7 @@ export class ContentSeedService implements OnApplicationBootstrap {
     try {
       await seedDefaultContent(this.dataSource, { logger: this.logger });
       await ensureLegalLinks(this.dataSource, { logger: this.logger });
+      await ensureEditableDefaults(this.dataSource, { logger: this.logger });
     } catch (err) {
       this.logger.warn(`Default content was not seeded: ${err instanceof Error ? err.message : String(err)}`);
     }
