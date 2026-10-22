@@ -34,7 +34,7 @@ const contactSchema = z.strictObject({
   email: z.email().max(255).transform((v) => v.toLowerCase()),
   subject: plain(200).optional(),
   /** 7-20 digits, optional leading +. */
-  phone: z.preprocess((v) => (v === "" ? undefined : v), z.string().regex(/^+?[0-9]{7,20}$/, "Invalid phone number").optional()),
+  phone: z.preprocess((v) => (v === "" ? undefined : v), z.string().regex(/^[+]?[0-9]{7,20}$/, "Invalid phone number").optional()),
   message: plain(4000, true),
   /** honeypot: real users never see it */
   website: z.string().max(500).optional(),
