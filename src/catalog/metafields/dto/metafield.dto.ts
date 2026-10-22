@@ -7,6 +7,13 @@ export type MetafieldOwnerType = z.infer<typeof metafieldOwnerTypeSchema>;
 const ownerParamSchema = z.object({ id: z.uuid() });
 export class MetafieldOwnerParamDto extends createZodDto(ownerParamSchema) {}
 
+const metafieldKeyParamSchema = z.object({
+  id: z.uuid(),
+  namespace: z.string().min(1).max(60).regex(/^[a-z0-9_-]+$/i),
+  key: z.string().min(1).max(60).regex(/^[a-z0-9_-]+$/i),
+});
+export class MetafieldKeyParamDto extends createZodDto(metafieldKeyParamSchema) {}
+
 const metafieldResponseSchema = z.object({
   id: z.string().uuid(),
   ownerType: metafieldOwnerTypeSchema,

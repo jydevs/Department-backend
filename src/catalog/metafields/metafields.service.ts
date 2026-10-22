@@ -91,6 +91,28 @@ export class MetafieldsService {
     });
   }
 
+  async deleteMetafield(ownerType: MetafieldOwnerType, ownerId: string, namespace: string, key: string): Promise<void> {
+    await this.transactionService.run(async (manager) => {
+      await this.verifyOwnerExists(ownerType, ownerId, manager);
+
+      const metaRepo = manager.getRepository(Metafield);
+      const existing = await metaRepo.findOne({ where: { ownerType, ownerId, namespace, key } });
+      if (!existing) throw AppException.notFound("Metafield");
+
+      await metaRepo.delete({ id: existing.id });
+
+      await this.auditService.record(
+        {
+          action: "metafield:delete",
+          entityType: "Metafield",
+          entityId: existing.id,
+          diff: { ownerType, ownerId, namespace, key, type: existing.type, value: existing.value },
+        },
+        manager,
+      );
+    });
+  }
+
   private validateMetafieldValue(type: string, value: string): void {
     if (value.length > 5000) {
       throw AppException.badRequest("VALUE_TOO_LONG", "Metafield value must be <= 5000 characters");

@@ -1,7 +1,7 @@
-import { Controller, Get, Put, Param, Body } from "@nestjs/common";
+import { Controller, Delete, Get, Put, Param, Body } from "@nestjs/common";
 import { MetafieldsService } from "./metafields.service";
 import { RequirePermissions } from "../../common/auth/decorators";
-import { MetafieldOwnerParamDto, MetafieldsListResponseDto, UpsertMetafieldsDto } from "./dto/metafield.dto";
+import { MetafieldKeyParamDto, MetafieldOwnerParamDto, MetafieldsListResponseDto, UpsertMetafieldsDto } from "./dto/metafield.dto";
 
 /** Product metafields (permissions: products:*). Only the `custom` namespace is exposed publicly by the storefront. */
 @Controller("admin/products/:id/metafields")
@@ -18,6 +18,12 @@ export class ProductMetafieldsController {
   @RequirePermissions("products:write")
   async upsert(@Param() { id }: MetafieldOwnerParamDto, @Body() input: UpsertMetafieldsDto): Promise<MetafieldsListResponseDto> {
     return { metafields: await this.metafieldsService.upsertMetafields("product", id, input.metafields) };
+  }
+
+  @Delete(":namespace/:key")
+  @RequirePermissions("products:write")
+  async remove(@Param() { id, namespace, key }: MetafieldKeyParamDto): Promise<void> {
+    await this.metafieldsService.deleteMetafield("product", id, namespace, key);
   }
 }
 
@@ -36,5 +42,11 @@ export class CollectionMetafieldsController {
   @RequirePermissions("collections:write")
   async upsert(@Param() { id }: MetafieldOwnerParamDto, @Body() input: UpsertMetafieldsDto): Promise<MetafieldsListResponseDto> {
     return { metafields: await this.metafieldsService.upsertMetafields("collection", id, input.metafields) };
+  }
+
+  @Delete(":namespace/:key")
+  @RequirePermissions("collections:write")
+  async remove(@Param() { id, namespace, key }: MetafieldKeyParamDto): Promise<void> {
+    await this.metafieldsService.deleteMetafield("collection", id, namespace, key);
   }
 }
