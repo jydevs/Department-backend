@@ -37,6 +37,7 @@ Como la cookie tiene `Path=/api/v1/auth`, el navegador solo la envía a esas rut
 - `POST /storefront/customers/login` (5/min) → `{ accessToken, expiresIn (15 min), refreshToken omitido, customer }`; cookie **`dept_ct`** (httpOnly, `Path=/api/v1/storefront/customers`, 30 días).
 - `POST /storefront/customers/refresh` rota la cookie y devuelve un nuevo `accessToken`; `POST /storefront/customers/logout`.
 - `forgot-password` (3/min) y `reset-password` (10/min).
+- `POST /storefront/customers/auth/resend-verification` `{ email }` (3/min, alias `/storefront/customers/resend-verification`) → siempre **202** `{ message }` idéntico exista o no la cuenta. Solo encola el correo `email_verify` si la cuenta existe, está activa y **no verificada**; no emite otro enlace si hay uno sin usar de menos de 2 min (el anterior se invalida al emitir uno nuevo). Email inválido → 400.
 - Rutas `/storefront/customers/me/*` exigen `Authorization: Bearer <accessToken del cliente>`. El token del cliente es distinto del del personal y no sirve en `/admin`.
 - Como el refresh es una cookie, el refresh se hace desde el navegador (o el servidor Next reenviando la cookie). Guarda el `accessToken` solo en memoria.
 
@@ -157,7 +158,7 @@ Global por IP (o por visitante con `X-Storefront-Key`): `THROTTLE_LIMIT` (120) p
 | Ruta | Límite / min |
 | --- | --- |
 | `POST /auth/login`, `POST /storefront/customers/login`, `/register`, `me/change-password`, `DELETE me` | 5 |
-| `forgot-password`, `me/data-export`, `POST /storefront/contact` | 3 |
+| `forgot-password`, `resend-verification`, `me/data-export`, `POST /storefront/contact` | 3 |
 | `reset-password`, `verify-email` | 10 |
 | `POST /storefront/newsletter` | 5; confirm/unsubscribe 10 |
 | `POST /storefront/checkouts` | 10 |
@@ -219,6 +220,7 @@ Tabla generada del código (`@Controller`/`@Get`/`@Post`…); ante duda manda `/
 - **Colecciones**: `CollectionDto` añade `image: { url, alt, width, height } | null` (resuelta desde `imageMediaId`) y `version`. `PATCH /admin/collections/:id` acepta `version` opcional: si difiere de la guardada → 409 `CONCURRENT_UPDATE`. `GET /admin/collections/:id/products` → `{ items: [{ id, handle, title, status, position, image, minPrice }], total }` en orden, con borradores y archivados; colección smart → 409 `COLLECTION_NOT_MANUAL`.
 - **Facetas**: `GET /admin/products/facets` → `{ tags, vendors, productTypes }` (distintos de productos no borrados, máx. 500 cada uno, ordenados).
 - **Crear producto**: el cuerpo admite `defaultVariantPrice` (entero COP ≥ 0, se aplica a las variantes generadas desde `options`) y, en `variants[]`, `optionValues: string[]` (nombres de valor en el orden de `options`; se enlazan a los ids creados en la misma transacción; combinación repetida o valor inexistente → 400; no combinar con `optionValueIds`).
+- **Inventario (filtros)**: `GET /admin/inventory` acepta además `variantId` y `productId` (uuid; se combinan con `q`, `locationId`, `lowStock`).
 - **Pedidos**: `POST /admin/orders/:id/mark-paid` con una `reference` ya usada por otro pago → 409 `PAYMENT_REFERENCE_DUPLICATE`.
 - **Imágenes (contenido)**: fuera de `production`, `safeImageUrl` acepta además `http://localhost`, `http://127.0.0.1` y `http://[::1]` con puerto opcional; en producción sigue exigiendo `https://` o `/ruta`.
 
@@ -257,10 +259,17 @@ Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `
 | PATCH · DELETE | `/storefront/carts/:id/lines/:variantId` | X-Cart-Token |
 | PUT | `/storefront/carts/:id/discount` | X-Cart-Token |
 | DELETE | `/storefront/carts/:id` | X-Cart-Token |
-| GET | `/storefront/shipping-rates` | — |
+| GET | `/storefront/shipping-rates?department=&cartId=` | **X-Cart-Token** (del carrito `cartId`; sin él 400 `CART_TOKEN_REQUIRED`, con otro token 404) |
 | POST | `/storefront/checkouts` | Idempotency-Key |
 | GET | `/storefront/orders/:orderNumber?token=…` (token del pedido) | token |
 | POST | `/storefront/dev/mock-payment` (solo dev/CI) | — |
+
+#### Carrito y pedido público: campos añadidos (todos compatibles hacia atrás)
+- **`GET /storefront/carts/:id?shippingRateId=&department=&email=`** (X-Cart-Token): `shippingRateId` y `department` van **juntos** (uno solo → 400). Con ellos el `quote` incluye `shippingTotal`, `shippingRate { id, name }` y el IVA recalculado sobre subtotal − descuento + envío (envío gratis por umbral o por código `free_shipping` incluido). Tarifa inexistente/no disponible para el departamento → 422 `SHIPPING_RATE_INVALID`. Sin esos parámetros todo queda como antes (`shippingTotal: 0`). `email` (opcional) valida los códigos de un solo uso por email al cotizar. Las mutaciones (`POST/PATCH/DELETE …/lines`, `PUT …/discount`) siguen devolviendo el carrito sin envío.
+- **`quote`** (carrito y checkout) añade: `taxIncluded` (boolean: los precios ya incluyen IVA; `total` no suma `taxTotal`), `taxRatePercent` (number, p. ej. 19) y `taxBreakdown { label, ratePercent, netAmount, taxAmount }` (`netAmount` = base sin IVA; `taxAmount` = `taxTotal`). Cada línea añade `productHandle` (string | null).
+- **`CartResponse`** añade `converted` (boolean) y `convertedOrderNumber` (number | null). Un carrito ya pagado/convertido sigue respondiendo `GET` (con `converted: true`); las mutaciones siguen dando 409 `CART_CONVERTED`.
+- **`PUT /storefront/carts/:id/discount`** acepta `email` opcional junto a `code`: si el código es de un solo uso por email y ese email (sin distinguir mayúsculas) ya lo usó → 422 `DISCOUNT_INVALID` con `details.reason: "already_used"` antes de pagar. Sin `email` el comportamiento es el de siempre (se valida al pagar).
+- **`GET /storefront/orders/:orderNumber?token=`**: cada línea añade `variantId`, `productId` y `productHandle` (string | null). `payment` añade `instructions` (mismo objeto `PaymentInstructions` que devuelve `POST /storefront/checkouts`) **solo mientras el pedido está `pending`** (también tras un pago `declined`/`error`); en otro estado es `null`. Permite reintentar el pago desde otro navegador solo con el token del pedido.
 
 ### Pedidos, descuentos, envíos, impuestos (admin)
 | Método | Ruta | Permiso |
@@ -277,12 +286,15 @@ Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `
 ### Clientes (tienda)
 | Método | Ruta | Auth |
 | --- | --- | --- |
+| POST | `/storefront/customers/auth/resend-verification` | — |
 | POST | `/storefront/customers/register` · `/login` · `/refresh` (cookie) · `/logout` · `/forgot-password` · `/reset-password` · `/verify-email` | — |
 | GET · PATCH | `/storefront/customers/me` | C |
 | POST | `/storefront/customers/me/change-password` · `/me/data-export` | C |
 | DELETE | `/storefront/customers/me` (Habeas Data: anonimiza) | C |
 | GET · POST | `/storefront/customers/me/addresses` | C |
 | PATCH · DELETE | `/storefront/customers/me/addresses/:addressId` | C |
+
+`PATCH …/addresses/:addressId`: `documentType` y `documentNumber` aceptan `null` (o `""` en el número) para **quitar el documento**; quitar solo `documentType` limpia también el número salvo que se envíe uno nuevo. El mínimo de 4 caracteres de `documentNumber` solo se exige cuando se envía un valor.
 | GET | `/storefront/customers/me/orders` · `/me/orders/:orderNumber` | C |
 
 ### Clientes (admin) y marketing

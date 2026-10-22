@@ -582,6 +582,26 @@
             }
           },
           {
+            "name": "variantId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "productId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
             "name": "lowStock",
             "required": false,
             "in": "query",
@@ -2522,7 +2542,8 @@
                 "product",
                 "cart",
                 "search",
-                "page"
+                "page",
+                "layout"
               ]
             }
           }
@@ -2901,6 +2922,34 @@
             "schema": {
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "shippingRateId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "department",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 60,
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "required": false,
+            "in": "query",
+            "schema": {
               "type": "string"
             }
           }
@@ -4423,6 +4472,56 @@
           }
         },
         "summary": "Request a password reset link (always 202)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/auth/resend-verification": {
+      "post": {
+        "operationId": "CustomerAuthController_resendVerification[0]",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Resend the email verification link (always 202: does not reveal whether the account exists)",
+        "tags": [
+          "storefront-customers-auth"
+        ]
+      }
+    },
+    "/api/v1/storefront/customers/resend-verification": {
+      "post": {
+        "operationId": "CustomerAuthController_resendVerification[1]",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Resend the email verification link (always 202: does not reveal whether the account exists)",
         "tags": [
           "storefront-customers-auth"
         ]
@@ -7052,6 +7151,9 @@
             "type": "string",
             "pattern": "^[A-Z0-9_-]{3,40}$",
             "nullable": true
+          },
+          "email": {
+            "type": "string"
           }
         },
         "required": [
@@ -7909,6 +8011,18 @@
         ],
         "additionalProperties": false
       },
+      "ResendVerificationDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
       "ResetPasswordDto": {
         "type": "object",
         "properties": {
@@ -8122,14 +8236,16 @@
               "CC",
               "CE",
               "NIT",
-              "PP"
-            ]
+              "PP",
+              null
+            ],
+            "nullable": true
           },
           "documentNumber": {
             "type": "string",
-            "minLength": 4,
             "maxLength": 20,
-            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+            "nullable": true
           },
           "label": {
             "type": "string",
