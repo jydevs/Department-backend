@@ -3,6 +3,7 @@ import { AuditLog } from "../../identity/entities";
 import { ContentDocument, ContentVersion } from "../entities";
 import type { ContentKind } from "../entities/content-document.entity";
 import { parseDocument } from "../schemas";
+import { LEGAL_DOCUMENTS, LEGAL_FOOTER_COLUMN } from "./legal-content";
 
 /**
  * Default site content: a 1:1 transcription of what the Next.js storefront used to hard-code
@@ -152,8 +153,9 @@ const layoutTemplate = {
       },
       [
         block("col-shop", "column", { title: "Tienda", links: [], menuKey: "footer" }),
-        block("col-community", "column", { title: "Comunidad", links: [{ label: "Community", url: "/pages/community" }] }),
+        block("col-community", "column", { title: "Comunidad", links: [{ label: "Community", url: "/pages/community" }, { label: "Contacto", url: "/pages/contact" }] }),
         block("col-account", "account-links", { title: "Cuenta", accountLabel: "Mi cuenta", cartLabel: "Carrito" }),
+        LEGAL_FOOTER_COLUMN,
       ],
     ),
   ],
@@ -508,6 +510,7 @@ export const DEFAULT_DOCUMENTS: SeedDocument[] = [
   { kind: "template", key: "404", title: "Plantilla: Error 404", data: notFoundTemplate },
   { kind: "page", key: "community", title: "Community", data: communityPage },
   { kind: "page", key: "contact", title: "Contacto", data: contactPage },
+  ...LEGAL_DOCUMENTS,
 ];
 
 export interface SeedLogger {
