@@ -2,11 +2,23 @@ import type { SeedDocument } from "./default-content";
 
 /**
  * Páginas legales por defecto (tienda online en Colombia, precios en COP con IVA incluido).
- * Solo se usan datos que el sistema conoce: no hay razón social, NIT, dirección ni teléfono;
- * las solicitudes se canalizan por el formulario de /pages/contact.
+ * Los datos de la empresa (LEGAL_ENTITY) son PROVISIONALES: reemplázalos desde el panel (Contenido → Páginas)
+ * cuando tengas los definitivos. Las solicitudes también se canalizan por el formulario de /pages/contact.
  */
 
 export const LEGAL_UPDATED = "22 de octubre de 2026";
+export const LEGAL_ENTITY = {
+  name: "Daregular Dept. S.A.S.",
+  nit: "000.000.000-0",
+  address: "Bogotá D.C., Colombia",
+  email: "contacto@daregulardept.com",
+  phone: "+57 300 000 0000",
+} as const;
+const ENTITY_LINES = `- **Razón social:** ${LEGAL_ENTITY.name}
+- **NIT:** ${LEGAL_ENTITY.nit}
+- **Domicilio:** ${LEGAL_ENTITY.address}
+- **Correo:** ${LEGAL_ENTITY.email}
+- **Teléfono:** ${LEGAL_ENTITY.phone}`;
 const UPDATED_NOTE = `*Última actualización: ${LEGAL_UPDATED}.*`;
 
 type Settings = Record<string, unknown>;
@@ -34,6 +46,8 @@ const termsPage = {
       "Objeto y aceptación",
       lines(
         "Estos términos y condiciones regulan el acceso y uso de este sitio web y las compras de productos que se hacen a través de él. El sitio es operado por Daregular Dept. (en adelante, \"Daregular Dept.\", \"nosotros\" o \"la tienda\"), una tienda de ropa que vende en Colombia.",
+        "## Quiénes somos",
+        ENTITY_LINES,
         "Al navegar por el sitio, crear una cuenta o realizar un pedido, aceptas estos términos. Si no estás de acuerdo con ellos, te pedimos que no uses el sitio ni realices compras.",
         "## Uso del sitio",
         "Te comprometes a usar el sitio de buena fe y de forma lícita. En particular, no puedes:",
@@ -106,7 +120,9 @@ const privacyPage = {
       lines(
         "Esta política describe cómo Daregular Dept. trata los datos personales de quienes visitan el sitio, crean una cuenta, compran o se suscriben a nuestro boletín, conforme a la Ley 1581 de 2012 y sus decretos reglamentarios sobre protección de datos personales en Colombia.",
         "## Responsable del tratamiento",
-        "El responsable del tratamiento de tus datos personales es Daregular Dept. Para cualquier solicitud relacionada con tus datos puedes escribirnos a través del formulario de la [página de contacto](/pages/contact).",
+        "El responsable del tratamiento de tus datos personales es Daregular Dept.",
+        ENTITY_LINES,
+        "Para cualquier solicitud relacionada con tus datos puedes escribirnos a esos datos de contacto o a través del formulario de la [página de contacto](/pages/contact).",
         "## Datos que recolectamos",
         "- **Cuenta:** nombre, correo electrónico, teléfono (si lo registras) y contraseña, que se almacena de forma protegida.\n- **Pedidos:** productos comprados, valores, estado del pedido y del pago, y datos de facturación y entrega.\n- **Direcciones:** direcciones de envío que registras o ingresas al comprar.\n- **Contacto:** los datos y el mensaje que nos envías por el formulario de contacto.\n- **Newsletter:** tu correo electrónico, si te suscribes.\n- **Datos técnicos y cookies:** información básica del dispositivo y de la navegación, y cookies necesarias para el funcionamiento del sitio, como mantener tu sesión y tu carrito.",
         "No recolectamos datos sensibles. Los datos de tu tarjeta o cuenta bancaria los procesa directamente la pasarela de pagos y no quedan almacenados en nuestro sitio.",
