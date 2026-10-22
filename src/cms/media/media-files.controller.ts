@@ -1,4 +1,5 @@
 import { Controller, Get, Inject, Param, Res } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import type { Response } from "express";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
@@ -16,6 +17,8 @@ export class MediaFilesController {
 
   @Get(":key")
   @Public()
+  // images are served from the CDN/edge cache and requested in bulk by every page: the global per-IP limit would 429 normal browsing
+  @SkipThrottle()
   async serve(@Param("key") key: string, @Res() res: Response): Promise<void> {
     const match = KEY_RE.exec(key);
     if (!match || !this.storage.resolvePath) throw AppException.notFound("File");
