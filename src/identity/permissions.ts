@@ -13,6 +13,10 @@ export const PERMISSIONS = [
   "inventory:write",
   "orders:read",
   "orders:write",
+  /** mark an order as paid by hand (money not verified by the gateway): owner/admin only */
+  "orders:payments",
+  /** register refunds: owner/admin only */
+  "orders:refunds",
   "customers:read",
   "customers:write",
   "content:read",

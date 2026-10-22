@@ -68,7 +68,7 @@ export class OrdersAdminController {
   }
 
   @Post(":id/mark-paid")
-  @RequirePermissions("orders:write")
+  @RequirePermissions("orders:payments")
   markPaid(@Param() { id }: IdParamDto, @Body() body: OrderMarkPaidDto, @CurrentActor() actor: Actor): Promise<OrderDetailDto> {
     return this.orders.markPaid(id, body, actor);
   }
@@ -86,7 +86,7 @@ export class OrdersAdminController {
   }
 
   @Post(":id/refunds")
-  @RequirePermissions("orders:write")
+  @RequirePermissions("orders:refunds")
   createRefund(@Param() { id }: IdParamDto, @Body() body: RefundCreateDto, @CurrentActor() actor: Actor): Promise<RefundResultDto> {
     return this.refunds.create(id, body, toEventActor(actor));
   }

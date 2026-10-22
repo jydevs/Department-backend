@@ -241,8 +241,9 @@ Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `
 | GET | `/admin/content/section-types` · `/documents` · `/documents/:kind/:key` · `/documents/:kind/:key/versions` · `/…/versions/:versionId` | A:content:read |
 | POST | `/admin/content/preview-tokens` | A:content:read |
 | POST | `/admin/content/pages` · `/documents/:kind/:key/discard` · `/documents/:kind/:key/versions/:versionId/restore` | A:content:write |
-| PUT · DELETE | `/admin/content/documents/:kind/:key` | A:content:write |
+| PUT | `/admin/content/documents/:kind/:key` | A:content:write |
 | POST | `/admin/content/documents/:kind/:key/publish` · `/schedule` | A:content:publish |
+| DELETE | `/admin/content/documents/:kind/:key` (borra una página: la quita de la tienda) | A:content:publish (antes `content:write`) |
 | DELETE | `/admin/content/documents/:kind/:key/schedule/:versionId` | A:content:publish |
 | GET | `/admin/media` · `/admin/media/:id/usages` · `/admin/redirects` · `/admin/redirects/:id` | A:content:read |
 | POST · PATCH · DELETE | `/admin/redirects[/:id]` | A:content:write |
@@ -276,7 +277,9 @@ Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `
 | --- | --- | --- |
 | GET | `/admin/orders` · `/:id` · `/:id/timeline` | A:orders:read |
 | PATCH | `/admin/orders/:id` | A:orders:write |
-| POST | `/admin/orders/:id/notes` · `/cancel` · `/mark-paid` · `/fulfillments` · `/fulfillments/:fid/cancel` · `/refunds` | A:orders:write |
+| POST | `/admin/orders/:id/notes` · `/cancel` · `/fulfillments` · `/fulfillments/:fid/cancel` | A:orders:write |
+| POST | `/admin/orders/:id/mark-paid` | A:orders:payments (solo owner/admin por defecto) |
+| POST | `/admin/orders/:id/refunds` | A:orders:refunds (solo owner/admin por defecto) |
 | GET | `/admin/discounts` · `/:id` · `/:id/redemptions` | A:discounts:read |
 | POST · PATCH · DELETE | `/admin/discounts[/:id]` | A:discounts:write |
 | GET | `/admin/shipping/zones[/:id]` · `/admin/shipping/rates[/:id]` · `/admin/taxes` | A:shipping:read |
