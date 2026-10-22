@@ -26,7 +26,7 @@ CORS: solo los orígenes de `CORS_ORIGINS`, con `credentials: true`. Cabeceras p
 1. `POST /api/v1/auth/login` con `{ email, password, totp? }` (5/min por IP). Devuelve `{ accessToken, expiresIn, user }`
    y fija la cookie **`dept_rt`** (httpOnly, `SameSite=Lax`, `Secure` en producción, `Path=/api/v1/auth`, 30 días).
 2. Envía `Authorization: Bearer <accessToken>` en cada llamada `/admin/*`.
-3. Cuando expire (`expiresIn` en segundos) o llegue un 401: `POST /api/v1/auth/refresh` (con `credentials: "include"`; la cookie se rota y se devuelve un nuevo `accessToken`). Reutilizar un refresh ya rotado revoca la familia.
+3. Cuando expire (`expiresIn` en segundos) o llegue un 401: `POST /api/v1/auth/refresh` (con `credentials: "include"`; la cookie se rota y se devuelve un nuevo `accessToken`). Reutilizar un refresh ya rotado revoca la familia, salvo durante 20 s tras la rotación (dos pestañas / reintento concurrente): en esa gracia se devuelve solo un `accessToken` nuevo, **sin** `Set-Cookie` (se conserva la cookie que dejó la petición ganadora) y la familia sigue viva.
 4. `POST /api/v1/auth/logout` revoca las sesiones. `GET /api/v1/auth/me` devuelve rol y **lista de permisos**: el panel debe usarla para mostrar/ocultar secciones (el servidor siempre lo vuelve a comprobar).
 5. 2FA TOTP opcional: `POST /auth/2fa/setup` → `/auth/2fa/enable` → `/auth/2fa/disable`; `POST /auth/change-password`.
 
@@ -35,7 +35,7 @@ Como la cookie tiene `Path=/api/v1/auth`, el navegador solo la envía a esas rut
 ### Clientes (tienda)
 - `POST /storefront/customers/register` (5/min) → correo de verificación. `POST /storefront/customers/verify-email` `{ token, password }`.
 - `POST /storefront/customers/login` (5/min) → `{ accessToken, expiresIn (15 min), refreshToken omitido, customer }`; cookie **`dept_ct`** (httpOnly, `Path=/api/v1/storefront/customers`, 30 días).
-- `POST /storefront/customers/refresh` rota la cookie y devuelve un nuevo `accessToken`; `POST /storefront/customers/logout`.
+- `POST /storefront/customers/refresh` rota la cookie y devuelve un nuevo `accessToken` (misma gracia de 20 s para peticiones concurrentes: sin `Set-Cookie` ni revocación); `POST /storefront/customers/logout`.
 - `forgot-password` (3/min) y `reset-password` (10/min).
 - `POST /storefront/customers/auth/resend-verification` `{ email }` (3/min, alias `/storefront/customers/resend-verification`) → siempre **202** `{ message }` idéntico exista o no la cuenta. Solo encola el correo `email_verify` si la cuenta existe, está activa y **no verificada**; no emite otro enlace si hay uno sin usar de menos de 2 min (el anterior se invalida al emitir uno nuevo). Email inválido → 400.
 - Rutas `/storefront/customers/me/*` exigen `Authorization: Bearer <accessToken del cliente>`. El token del cliente es distinto del del personal y no sirve en `/admin`.

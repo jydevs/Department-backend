@@ -66,7 +66,7 @@ export class CustomerAuthController {
 
     try {
       const { refreshToken, ...result } = await this.auth.refresh(current);
-      this.setRefreshCookie(res, refreshToken);
+      if (refreshToken) this.setRefreshCookie(res, refreshToken); // absent: a concurrent refresh already rotated it, keep the winner's cookie
       res.setHeader("Cache-Control", "no-store");
       return result;
     } catch (err) {

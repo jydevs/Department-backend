@@ -18,6 +18,8 @@ import { isEmailSuppressed, linkGuestOrders, queryRows, recordFailedPassword, to
 import { CustomerTokenService } from "./customer-token.service";
 
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** A refresh token rotated this recently is presented again by a concurrent request (two tabs, a retry), not by a thief: no family revocation. */
+const REFRESH_GRACE_MS = 20_000;
 const RESET_TTL_MS = 60 * 60 * 1000;
 const VERIFY_TTL_MS = 48 * 60 * 60 * 1000;
 /** No second link of the same type is issued while an unused one younger than this exists (anti mail-bombing). */
@@ -160,7 +162,7 @@ export class CustomerAuthService implements OnModuleInit {
    * Rotate a refresh token. The row is locked for the whole rotation, so two simultaneous requests with the
    * same cookie cannot both succeed. Presenting an already-rotated token means it leaked: the whole family dies.
    */
-  async refresh(refreshToken: string): Promise<CustomerRefreshResponse & { refreshToken: string }> {
+  async refresh(refreshToken: string): Promise<CustomerRefreshResponse & { refreshToken?: string }> {
     const hash = this.tokens.hashOpaque(refreshToken);
     const now = this.clock.now();
 
@@ -169,6 +171,12 @@ export class CustomerAuthService implements OnModuleInit {
       if (!token) return { kind: "invalid" as const };
 
       if (token.revokedAt) {
+        if (token.replacedById && now.getTime() - token.revokedAt.getTime() <= REFRESH_GRACE_MS) {
+          // Concurrent refresh with the cookie that was just rotated: the winner holds the successor (and sets the cookie).
+          const holder = await manager.findOne(Customer, { where: { id: token.customerId } });
+          if (!holder || !holder.isActive || holder.anonymizedAt) return { kind: "invalid" as const };
+          return { kind: "grace" as const, customerId: holder.id };
+        }
         if (token.replacedById) {
           await manager.update(CustomerRefreshToken, { familyId: token.familyId, revokedAt: IsNull() }, { revokedAt: now });
           await this.audit.record({ action: "CUSTOMER_TOKEN_REUSE_DETECTED", entityType: "Customer", entityId: token.customerId }, manager);
@@ -197,10 +205,10 @@ export class CustomerAuthService implements OnModuleInit {
     });
 
     // thrown outside the transaction so the family revocation above is committed
-    if (outcome.kind !== "ok") throw AppException.unauthorized("Invalid refresh token", "UNAUTHORIZED");
+    if (outcome.kind !== "ok" && outcome.kind !== "grace") throw AppException.unauthorized("Invalid refresh token", "UNAUTHORIZED");
 
     const access = await this.tokens.sign(outcome.customerId);
-    return { accessToken: access.token, expiresIn: access.expiresIn, refreshToken: outcome.refreshToken };
+    return { accessToken: access.token, expiresIn: access.expiresIn, ...(outcome.kind === "ok" ? { refreshToken: outcome.refreshToken } : {}) };
   }
 
   /** Revoke the session (token family) of the cookie. Unknown or missing tokens are ignored: logout never fails. */

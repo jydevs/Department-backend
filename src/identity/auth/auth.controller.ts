@@ -85,14 +85,16 @@ export class AuthController {
 
     const { refreshToken: newRefreshToken, ...result } = await this.authService.refreshAccessToken(refreshToken);
 
-    // Set new refresh token in cookie
-    res.cookie("dept_rt", newRefreshToken, {
-      httpOnly: true,
-      secure: this.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/api/v1/auth",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    // Set new refresh token in cookie (absent when a concurrent refresh already rotated it: keep the cookie the winner set)
+    if (newRefreshToken) {
+      res.cookie("dept_rt", newRefreshToken, {
+        httpOnly: true,
+        secure: this.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/api/v1/auth",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+    }
 
     return result;
   }

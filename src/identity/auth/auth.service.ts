@@ -18,6 +18,8 @@ const RECOVERY_CODE_COUNT = 8;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MS = 15 * 60 * 1000;
+/** A refresh token rotated this recently is presented again by a concurrent request (two tabs, a retry), not by a thief: no family revocation. */
+const REFRESH_GRACE_MS = 20_000;
 
 /**
  * Core authentication logic: login, logout, 2FA, password changes, token rotation.
@@ -112,7 +114,7 @@ export class AuthService implements OnModuleInit {
    * Rotate a refresh token. The row is locked for the whole rotation, so two simultaneous requests with the
    * same cookie cannot both succeed. Presenting an already-rotated token means it leaked: the whole family dies.
    */
-  async refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number; refreshToken: string }> {
+  async refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number; refreshToken?: string }> {
     const hash = this.tokenService.hashRefreshToken(refreshToken);
     const now = this.clock.now();
 
@@ -121,6 +123,13 @@ export class AuthService implements OnModuleInit {
       if (!token) return { kind: "invalid" as const };
 
       if (token.revokedAt) {
+        if (token.replacedById && now.getTime() - token.revokedAt.getTime() <= REFRESH_GRACE_MS) {
+          // Concurrent refresh with the cookie that was just rotated: the winner already holds the successor (and sets the cookie).
+          // Answer with a fresh access token only; the successor stays untouched and the family alive.
+          const holder = await manager.findOne(StaffUser, { where: { id: token.staffUserId }, relations: { role: true } });
+          if (!holder || !holder.isActive) return { kind: "invalid" as const };
+          return { kind: "grace" as const, user: holder };
+        }
         if (token.replacedById) {
           await manager.update(RefreshToken, { familyId: token.familyId, revokedAt: IsNull() }, { revokedAt: now });
           await this.recordAudit({ action: "TOKEN_REUSE_DETECTED", entityType: "StaffUser", entityId: token.staffUserId, manager });
@@ -150,13 +159,13 @@ export class AuthService implements OnModuleInit {
     });
 
     // thrown outside the transaction so the family revocation above is committed
-    if (outcome.kind !== "ok") throw AppException.unauthorized("Invalid refresh token", "UNAUTHORIZED");
+    if (outcome.kind !== "ok" && outcome.kind !== "grace") throw AppException.unauthorized("Invalid refresh token", "UNAUTHORIZED");
 
     const { token: accessToken, expiresIn } = await this.tokenService.generateAccessToken({
       sub: outcome.user.id,
       role: outcome.user.role!.key,
     });
-    return { accessToken, refreshToken: outcome.refreshToken, expiresIn: Math.floor(expiresIn / 1000) };
+    return { accessToken, ...(outcome.kind === "ok" ? { refreshToken: outcome.refreshToken } : {}), expiresIn: Math.floor(expiresIn / 1000) };
   }
 
   /**
