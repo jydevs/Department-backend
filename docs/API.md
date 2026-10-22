@@ -47,13 +47,13 @@ Formato `recurso:accion`. Un endpoint admin exige **todos** los permisos listado
 | Rol | Permisos |
 | --- | --- |
 | owner | todos |
-| admin | todos salvo `roles:write` |
+| admin | todos salvo `roles:write` (incluye `orders:payments` y `orders:refunds`) |
 | editor | `content:read/write/publish`, `media:write`, `products:read/write`, `collections:read/write`, `inventory:read` |
-| fulfillment | `orders:read/write`, `inventory:read/write`, `shipping:read` |
+| fulfillment | `orders:read/write` (sin `orders:payments` ni `orders:refunds`), `inventory:read/write`, `shipping:read` |
 | support | `orders:read`, `customers:read`, `marketing:read` |
 | analyst | `staff:read`, `roles:read`, `audit:read`, `products:read`, `collections:read`, `inventory:read`, `orders:read`, `customers:read`, `content:read`, `analytics:read`, `discounts:read`, `shipping:read`, `marketing:read` |
 
-Lista completa: `staff:*`, `roles:*`, `audit:read`, `settings:read|write`, `products:*`, `collections:*`, `inventory:*`, `orders:*`, `customers:*`,
+Lista completa: `staff:*`, `roles:*`, `audit:read`, `settings:read|write`, `products:*`, `collections:*`, `inventory:*`, `orders:read|write|payments|refunds` (`payments` = marcar pagado a mano, `refunds` = reembolsos: solo owner/admin por defecto; los roles personalizados con `orders:write` NO los reciben automáticamente), `customers:*`,
 `content:read|write|publish`, `media:write`, `discounts:*`, `shipping:*`, `marketing:*`, `import:read|write`, `analytics:read`.
 Sin token → 401 `UNAUTHORIZED`; con token pero sin permiso → 403 `FORBIDDEN`.
 
