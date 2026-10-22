@@ -441,6 +441,7 @@ export class StorefrontService {
         hoverImage: images[1] ?? null,
         tags: p.tags ?? [],
         vendor: p.vendor ?? null,
+        updatedAt: p.updatedAt,
         variants: variants.slice(0, MAX_SUMMARY_VARIANTS).map((v) => ({
           id: v.id,
           title: v.title,

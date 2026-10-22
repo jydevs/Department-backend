@@ -82,6 +82,8 @@ const storefrontProductSummarySchema = z.object({
   hoverImage: storefrontImageSchema.nullable(),
   tags: z.array(z.string()),
   vendor: z.string().nullable(),
+  /** Last modification of the product (ISO-8601). */
+  updatedAt: z.coerce.date(),
   /** Compact list of ACTIVE variants (max 100) for quick-add UIs. */
   variants: z.array(
     z.object({
