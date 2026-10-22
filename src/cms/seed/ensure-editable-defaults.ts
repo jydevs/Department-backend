@@ -6,8 +6,17 @@ import type { ContentKind } from "../entities/content-document.entity";
 import { parseDocument } from "../schemas";
 import { BRAND_EXTRA, CART_EXTRA_LABELS, LOAD_MORE_LABELS, PRODUCT_CARD_LABELS, THEME_EXTRA, type SeedLogger } from "./default-content";
 
-/** Nota de la versión que publica este paso; también sirve de marca para no repetirlo en ese documento. */
+/** Nota de la versión que publica este paso. Marca heredada: los documentos que ya la tienen no se vuelven a tocar. */
 export const EDITABLE_DEFAULTS_NOTE = "Campos editables nuevos (valores por defecto)";
+
+/** Marca persistente (fila de auditoría `system`) de que este paso ya se resolvió para un documento, tenga o no versión publicada. */
+export const EDITABLE_DEFAULTS_MARK = "content:defaults-applied";
+
+async function markApplied(manager: EntityManager, patch: EditablePatch, id: string): Promise<void> {
+  await manager.save(
+    manager.create(AuditLog, { actorType: "system", actorId: null, action: EDITABLE_DEFAULTS_MARK, entityType: "ContentDocument", entityId: id, diff: { kind: patch.kind, key: patch.key } }),
+  );
+}
 
 type Obj = Record<string, unknown>;
 
@@ -68,8 +77,13 @@ async function ensureOne(manager: EntityManager, patch: EditablePatch, logger?: 
   );
   const id = rows[0]?.id;
   if (!id) return false;
-  // ya aplicado una vez: si luego el administrador vació un campo, se respeta
-  const marked: unknown[] = await manager.query(`SELECT 1 FROM content_versions WHERE document_id = $1 AND note = $2 LIMIT 1`, [id, EDITABLE_DEFAULTS_NOTE]);
+  // ya resuelto una vez (marca de auditoría o, en bases anteriores, la nota de la versión): si luego el administrador
+  // quitó una clave o vació un campo, se respeta y no se sube `version` del documento
+  const marked: unknown[] = await manager.query(
+    `SELECT 1 FROM audit_logs WHERE entity_type = 'ContentDocument' AND entity_id = $1 AND action = $2
+     UNION ALL SELECT 1 FROM content_versions WHERE document_id = $3 AND note = $4 LIMIT 1`,
+    [String(id), EDITABLE_DEFAULTS_MARK, id, EDITABLE_DEFAULTS_NOTE],
+  );
   if (marked.length > 0) return false;
 
   const doc = await manager.findOneByOrFail(ContentDocument, { id });
@@ -78,7 +92,10 @@ async function ensureOne(manager: EntityManager, patch: EditablePatch, logger?: 
 
   const nextPublished = published ? applyEditablePatch(patch, published.data) : null;
   const nextDraft = applyEditablePatch(patch, doc.draft);
-  if (!nextPublished && !nextDraft) return false;
+  if (!nextPublished && !nextDraft) {
+    await markApplied(manager, patch, id); // nada que añadir: tampoco se reinsertará lo que se borre después
+    return false;
+  }
 
   const validate = (data: Obj): Obj | null => {
     const parsed = parseDocument(patch.kind, patch.key, data);
@@ -127,6 +144,7 @@ async function ensureOne(manager: EntityManager, patch: EditablePatch, logger?: 
     // draft_updated_by se conserva: el borrador sigue siendo del mismo autor
     await manager.query(`UPDATE content_documents SET draft = $2::jsonb, draft_updated_at = $3, updated_at = $3, version = version + 1 WHERE id = $1`, [id, JSON.stringify(draftData), now]);
   }
+  await markApplied(manager, patch, id);
   logger?.log(`Editable defaults added to ${label}`);
   return true;
 }
@@ -135,7 +153,8 @@ async function ensureOne(manager: EntityManager, patch: EditablePatch, logger?: 
  * Bases ya sembradas: añade los campos editables nuevos (logotipo de texto, favicon, grano, textos de tarjetas, del carrito…)
  * con el valor que la tienda mostraba fijo, SOLO donde faltan. Nunca sobrescribe un valor existente ni toca otros campos.
  * Si el documento estaba publicado, publica una versión nueva (auditoría `system`); un borrador con cambios pendientes los
- * conserva. Se aplica una sola vez por documento (marca: la nota de la versión). Idempotente.
+ * conserva. Se aplica una sola vez por documento (marca persistente en auditoría, con compatibilidad con la nota de versión antigua): no reinserta
+ * claves borradas después ni sube `version` de borradores sin cambios. Las versiones programadas (scheduled) no reciben campos. Idempotente.
  */
 export async function ensureEditableDefaults(dataSource: DataSource, opts: { logger?: SeedLogger } = {}): Promise<string[]> {
   const updated: string[] = [];

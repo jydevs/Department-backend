@@ -16,7 +16,6 @@ import type {
   CustomerDataExportDto,
   CustomerProfileDto,
   PublicOrderDetailDto,
-  PublicOrderDto,
   PublicOrderSummaryDto,
   UpdateAddressInput,
   UpdateProfileInput,
