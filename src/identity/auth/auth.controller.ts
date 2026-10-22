@@ -222,12 +222,18 @@ export class AuthController {
     const cookies: Record<string, string> = {};
     if (!cookieHeader) return cookies;
 
-    cookieHeader.split(";").forEach((cookie) => {
-      const [key, value] = cookie.trim().split("=");
-      if (key && value) {
+    for (const cookie of cookieHeader.split(";")) {
+      const eq = cookie.indexOf("=");
+      if (eq < 0) continue;
+      const key = cookie.slice(0, eq).trim();
+      const value = cookie.slice(eq + 1).trim();
+      if (!key || !value) continue;
+      try {
         cookies[key] = decodeURIComponent(value);
+      } catch {
+        // malformed percent-encoding (e.g. "%E0%A4%A"): ignore that cookie instead of failing the request with a 500
       }
-    });
+    }
 
     return cookies;
   }
