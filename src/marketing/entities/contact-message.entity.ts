@@ -14,6 +14,9 @@ export class ContactMessage extends AppBaseEntity {
   @Column({ type: "varchar", length: 200, nullable: true })
   subject?: string | null;
 
+  @Column({ type: "varchar", length: 30, nullable: true })
+  phone?: string | null;
+
   @Column({ type: "varchar", length: 4000 })
   message!: string;
 
