@@ -108,6 +108,10 @@ Muestra `message` al usuario solo si tu UI lo necesita; ramifica siempre por `co
 
 ## 7. Webhooks, vista previa y revalidación
 
+### Wompi (instrucciones de pago y conciliación)
+`PaymentInstructions` (checkout y `GET /storefront/orders/:n`) añade `expirationTime?: string` (ISO-8601, = `reservedUntil` del pedido) **solo si el backend tiene `WOMPI_EXPIRATION_ENABLED=true`**. En ese caso `signatureIntegrity = sha256(reference + amountInCents + currency + expirationTime + WOMPI_INTEGRITY_SECRET)` y el front **debe** añadir `expiration-time=<expirationTime>` a la URL del Web Checkout / widget (si no, Wompi rechaza la firma). Sin el flag la firma es la de siempre (`reference + amountInCents + currency + secret`) y no hay `expirationTime`.
+Los eventos `PENDING` se guardan en `payments` y un pedido con transacción pendiente reciente (30 min) no se expira. Antes de actuar sobre un estado final, el webhook se contrasta con `GET {WOMPI_API_URL}/transactions/{id}`; además un job (1/min) concilia con la API los pedidos `pending` a punto de expirar o con transacción pendiente. Sin llaves Wompi (mock) nada de esto se ejecuta. `POST /storefront/dev/mock-payment` acepta también `status: "pending"` (solo dev).
+
 ### Wompi (entrante)
 `POST /webhooks/wompi` (sin prefijo, sin sesión, sin rate limit). La autenticidad sale de la firma (checksum) calculada con `WOMPI_EVENTS_SECRET`
 sobre el **cuerpo crudo**; una firma inválida se rechaza. Configura esa URL en el panel de Wompi. Responde `200 { received: true }`.

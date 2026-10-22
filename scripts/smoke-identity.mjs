@@ -46,30 +46,40 @@ export async function identityChecks({ base, check, assert }) {
     assert(r.status === 200, `status ${r.status}`);
   });
 
-  await check("refresh rotates; reusing the old cookie is rejected", async () => {
+  const cookieOf = (r) => (r.headers.get("set-cookie") ?? "").split(";")[0];
+  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+  await check("refresh rotates; a concurrent reuse inside the 20 s grace gets an access token only (no cookie, family alive)", async () => {
     const r1 = await post("/auth/refresh", {}, null, { cookie });
     assert(r1.status < 300, `refresh status ${r1.status}`);
-    const r2 = await post("/auth/refresh", {}, null, { cookie });
-    assert(r2.status === 401, `reuse status ${r2.status}`);
+    const c1 = cookieOf(r1);
+    assert(c1 && c1 !== cookie, "no rotated cookie");
+    const grace = await post("/auth/refresh", {}, null, { cookie }); // two tabs / a retry with the cookie that was just rotated
+    assert(grace.status < 300 && (await grace.json()).accessToken, `grace reuse → ${grace.status}`);
+    assert(!cookieOf(grace), "grace reply must not set a cookie (it would overwrite the winner's)");
+    const alive = await post("/auth/refresh", {}, null, { cookie: c1 });
+    assert(alive.status < 300, `the family must survive the grace reuse: ${alive.status}`);
   });
 
-  await check("reusing a rotated token revokes the whole family (the fresh token dies too)", async () => {
+  await check("two simultaneous refreshes with one cookie: exactly one rotates (the other gets no cookie)", async () => {
     const l = await post("/auth/login", owner);
-    const c0 = (l.headers.get("set-cookie") ?? "").split(";")[0];
+    const c0 = cookieOf(l);
+    const [x, y] = await Promise.all([post("/auth/refresh", {}, null, { cookie: c0 }), post("/auth/refresh", {}, null, { cookie: c0 })]);
+    assert(x.status < 300 && y.status < 300, `${x.status}/${y.status}`);
+    assert([x, y].filter((r) => cookieOf(r)).length === 1, "exactly one response must carry the rotated cookie");
+  });
+
+  await check("reusing a rotated token AFTER the grace revokes the whole family (the fresh token dies too)", async () => {
+    const l = await post("/auth/login", owner);
+    const c0 = cookieOf(l);
     const r1 = await post("/auth/refresh", {}, null, { cookie: c0 });
-    const c1 = (r1.headers.get("set-cookie") ?? "").split(";")[0];
+    const c1 = cookieOf(r1);
     assert(r1.status < 300 && c1, "rotation failed");
-    await post("/auth/refresh", {}, null, { cookie: c0 }); // attacker replays the old one
+    await sleep(21_000);
+    const replay = await post("/auth/refresh", {}, null, { cookie: c0 }); // attacker replays the old one
+    assert(replay.status === 401, `late reuse → ${replay.status}`);
     const r2 = await post("/auth/refresh", {}, null, { cookie: c1 });
     assert(r2.status === 401, `legit token still alive: ${r2.status}`);
-  });
-
-  await check("two simultaneous refreshes with one cookie: only one wins", async () => {
-    const l = await post("/auth/login", owner);
-    const c0 = (l.headers.get("set-cookie") ?? "").split(";")[0];
-    const [a, b] = await Promise.all([post("/auth/refresh", {}, null, { cookie: c0 }), post("/auth/refresh", {}, null, { cookie: c0 })]);
-    const ok = [a, b].filter((r) => r.status < 300).length;
-    assert(ok === 1, `${ok} refreshes succeeded`);
   });
 
   // the access token is stateless: it keeps working after its refresh family died

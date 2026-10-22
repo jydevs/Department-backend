@@ -58,7 +58,7 @@ export class WompiProvider implements PaymentProvider {
     const amountInCents = order.total * 100;
     // Wompi integrity signature: reference + amount + currency + [expiration-time] + integrity secret. The expiration time
     // (the order's reservation deadline) keeps a PENDING transaction (PSE, Nequi…) from outliving the stock reservation.
-    const expirationTime = order.reservedUntil && order.reservedUntil.getTime() > Date.now() ? order.reservedUntil.toISOString() : undefined;
+    const expirationTime = this.env.WOMPI_EXPIRATION_ENABLED && order.reservedUntil && order.reservedUntil.getTime() > Date.now() ? order.reservedUntil.toISOString() : undefined;
     return {
       provider: "wompi",
       reference: order.paymentReference,

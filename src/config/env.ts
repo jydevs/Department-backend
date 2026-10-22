@@ -81,6 +81,14 @@ const schema = z
     WOMPI_PUBLIC_KEY: z.string().optional(),
     WOMPI_INTEGRITY_SECRET: z.string().optional(),
     WOMPI_API_URL: z.string().url().default("https://sandbox.wompi.co/v1"),
+    /**
+     * Sends `expirationTime` (= the order's reservedUntil) in the payment instructions and signs it into the integrity hash. Turn it on ONLY
+     * after the storefront forwards it to Wompi as `expiration-time`: with the flag on and an old front, Wompi rejects the signature.
+     */
+    WOMPI_EXPIRATION_ENABLED: z
+      .enum(["true", "false", "1", "0"])
+      .default("false")
+      .transform((v) => v === "true" || v === "1"),
     /** `mock` never talks to a payment gateway (dev/test only); production must use `wompi` */
     PAYMENT_PROVIDER: z.enum(["mock", "wompi"]).default("mock"),
     /** e-mail: `log` records messages in the outbox only (dev/test); production must use `smtp` */

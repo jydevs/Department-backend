@@ -53,6 +53,19 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
         const rows = (await db.query("SELECT DISTINCT template FROM email_outbox WHERE \"to\" = $1", [buyerEmail])).rows.map((r) => r.template);
         for (const t of ["order_confirmation", "order_cancelled", "refund_issued"]) assert(rows.includes(t), `missing ${t} (have ${rows.join(",")})`);
       });
+
+      await check("mail: the order e-mail link carries a token that opens ONLY that order (read-only)", async () => {
+        const r = await db.query("SELECT body_text FROM email_outbox WHERE \"to\" = $1 AND template = 'order_confirmation' ORDER BY created_at ASC LIMIT 1", [buyerEmail]);
+        const m = r.rows[0]?.body_text.match(/orders\/(\d+)\?token=([A-Za-z0-9_-]+)/);
+        assert(m, "order_confirmation has no /orders/:n?token= link");
+        const [, n, t] = m;
+        const open = await fetch(`${api}/storefront/orders/${n}?token=${t}`);
+        assert(open.status === 200 && (await open.json()).orderNumber === Number(n), `mail token → ${open.status}`);
+        const other = await fetch(`${api}/storefront/orders/${Number(n) + 1000000}?token=${t}`);
+        assert(other.status === 404, `mail token on another order → ${other.status}`);
+        const post = await fetch(`${api}/storefront/orders/${n}?token=${t}`, { method: "DELETE" });
+        assert(post.status === 404 || post.status === 405, `mail token must not allow writes → ${post.status}`);
+      });
     }
 
     await check("customers: register never reveals whether the e-mail exists (202 both times)", async () => {
@@ -125,8 +138,11 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
     await check("customers: refresh rotates and a replayed cookie is rejected", async () => {
       const r1 = await call("POST", "/storefront/customers/refresh", {}, undefined, { cookie });
       assert(r1.status < 300, `refresh → ${r1.status}`);
+      const grace = await call("POST", "/storefront/customers/refresh", {}, undefined, { cookie });
+      assert(grace.status < 300 && !(grace.headers.get("set-cookie") ?? ""), `replay inside the grace → ${grace.status}, must give an access token and no cookie`);
+      await new Promise((res) => setTimeout(res, 21_000));
       const r2 = await call("POST", "/storefront/customers/refresh", {}, undefined, { cookie });
-      assert(r2.status === 401, `replay → ${r2.status}`);
+      assert(r2.status === 401, `replay after the grace → ${r2.status}`);
     });
 
     await check("customers: addresses CRUD keeps a single default", async () => {

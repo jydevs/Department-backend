@@ -132,7 +132,10 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     const r2 = await doCheckout(cart, key);
     const again = await ok(r2, "replay");
     assert(again.orderNumber === order.orderNumber, "replay created another order");
-    orderToken = again.accessToken; // a replay rotates the token
+    assert(again.accessToken === order.accessToken, "a replay must return the SAME accessToken");
+    orderToken = again.accessToken;
+    const firstStillValid = await fetch(`${api}/storefront/orders/${order.orderNumber}?token=${order.accessToken}`);
+    assert(firstStillValid.status === 200, `token of the first response after a replay → ${firstStillValid.status}`);
     const other = await doCheckout(cart, key, { customerNote: "different body" });
     assert(other.status === 422, `changed body → ${other.status}`);
     assert((await available(handle)) === false, "stock should be reserved (unavailable)");
@@ -151,6 +154,10 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
   await check("commerce: webhook with a bad signature → 401; mock approval → order open/paid (idempotent)", async () => {
     const bad = await fetch(`${base}/webhooks/wompi`, { method: "POST", headers: { "content-type": "application/json", "x-event-checksum": "deadbeef" }, body: JSON.stringify({ event: "transaction.updated", data: {}, signature: { checksum: "deadbeef", properties: [] }, timestamp: 1 }) });
     assert(bad.status === 401, `bad signature → ${bad.status}`);
+    // a PENDING event (PSE, Nequi…) is stored and does not move the order; the approval that follows pays it
+    const pend = await ok(await mockPay(order.payment.reference, "pending"), "pending event");
+    assert(pend.outcome === "pending", `pending outcome ${pend.outcome}`);
+    assert((await adminOrder(orderId)).status === "pending", "a PENDING event must not change the order");
     const first = await mockPay(order.payment.reference, "approved");
     assert(first.status < 300, `mock approve ${first.status} ${await first.clone().text()}`);
     const second = await mockPay(order.payment.reference, "approved");
@@ -184,6 +191,9 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     const after = await adminOrder(orderId);
     assert(after.totalRefunded === PRICE && after.paymentStatus === "partially_refunded", `${after.totalRefunded}/${after.paymentStatus}`);
     assert((await available(handle)) === true, "restock should make the product available again");
+    // 1 of 2 units already restocked: asking to restock 2 more would put back more than was ever taken out
+    const double = await call("POST", `/admin/orders/${orderId}/refunds`, { amount: 1, lines: [{ orderLineId: line.id, quantity: 2 }], restock: true }, ownerToken);
+    assert(double.status === 409, `restock beyond the committed units → ${double.status}`);
     const tooMuch = await call("POST", `/admin/orders/${orderId}/refunds`, { amount: 10 * PRICE, restock: false }, ownerToken);
     assert(tooMuch.status >= 400 && tooMuch.status < 500, `refund above paid → ${tooMuch.status}`);
     if (analystToken) {
@@ -204,6 +214,9 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     assert(late.status < 300, `late approval ${late.status}`);
     const d = await adminOrder(id);
     assert(d.status === "cancelled" && (d.tags ?? []).includes("refund-pending"), `${d.status} tags=${JSON.stringify(d.tags)}`);
+    // stock was released, never committed: a refund with restock would create phantom stock
+    const phantom = await call("POST", `/admin/orders/${id}/refunds`, { amount: 1, lines: [{ orderLineId: d.lines[0].id, quantity: 1 }], restock: true }, ownerToken);
+    assert(phantom.status === 409, `restock on a never-committed order → ${phantom.status}`);
   });
 
   await check("commerce: a discount with usageLimit=1 is redeemed by only one of two parallel checkouts", async () => {
