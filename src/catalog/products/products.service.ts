@@ -75,6 +75,7 @@ export class ProductsService {
       }
     }
     for (const v of input.variants ?? []) this.assertPrices(v.price, v.compareAtPrice);
+    this.validateVariantOptionValues(input);
     const skus = (input.variants ?? []).map((v) => v.sku).filter((s): s is string => !!s);
     this.assertUnique(skus, "Duplicate SKUs in variants", "SKU_TAKEN");
 
@@ -119,9 +120,10 @@ export class ProductsService {
       }
 
       if (input.variants && input.variants.length > 0) {
-        await this.createVariantsWithSkuCheck(input.variants, savedProduct.id, manager);
+        const variants = input.variants.map((v) => ({ ...v, optionValueIds: this.resolveOptionValueIds(v.optionValues, optionsList) ?? v.optionValueIds }));
+        await this.createVariantsWithSkuCheck(variants, savedProduct.id, manager);
       } else if (optionsList.length > 0) {
-        await this.generateCartesianVariants(optionsList, savedProduct.id, manager);
+        await this.generateCartesianVariants(optionsList, savedProduct.id, manager, input.defaultVariantPrice ?? 0);
       }
 
       await this.auditService.record(
@@ -672,6 +674,51 @@ export class ProductsService {
     }
   }
 
+  /** Value names are matched like the duplicate check (trim + case-insensitive). */
+  private optionValueKey(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  /** Pre-transaction validation of `variants[].optionValues`: arity, existing names and no repeated combination. */
+  private validateVariantOptionValues(input: ProductCreateInput): void {
+    const combos = new Set<string>();
+    for (const [idx, variant] of (input.variants ?? []).entries()) {
+      const names = variant.optionValues;
+      if (names === undefined) continue;
+      const options = input.options ?? [];
+      if (options.length === 0) {
+        throw AppException.badRequest("BAD_REQUEST", `variants[${idx}].optionValues requires options in the request`);
+      }
+      if (variant.optionValueIds.length > 0) {
+        throw AppException.badRequest("BAD_REQUEST", `variants[${idx}]: send either optionValues or optionValueIds, not both`);
+      }
+      if (names.length !== options.length) {
+        throw AppException.badRequest("BAD_REQUEST", `variants[${idx}].optionValues must have ${options.length} value(s), one per option and in the same order`);
+      }
+      names.forEach((name, i) => {
+        const known = options[i].values.some((v) => this.optionValueKey(v.value) === this.optionValueKey(name));
+        if (!known) {
+          throw AppException.badRequest("BAD_REQUEST", `variants[${idx}]: "${name}" is not a value of option "${options[i].name}"`);
+        }
+      });
+      const combo = JSON.stringify(names.map((n) => this.optionValueKey(n)));
+      if (combos.has(combo)) {
+        throw AppException.badRequest("BAD_REQUEST", `Duplicate variant combination: ${names.join(" / ")}`);
+      }
+      combos.add(combo);
+    }
+  }
+
+  /** Names -> ids of the option values created in this transaction (null when the variant sent no names). */
+  private resolveOptionValueIds(names: string[] | undefined, options: OptionWithValues[]): string[] | null {
+    if (names === undefined) return null;
+    return names.map((name, i) => {
+      const found = options[i]?.values.find((v) => this.optionValueKey(v.value) === this.optionValueKey(name));
+      if (!found) throw AppException.badRequest("BAD_REQUEST", `"${name}" is not a value of option #${i + 1}`);
+      return found.id;
+    });
+  }
+
   private async createVariantsWithSkuCheck(variants: VariantCreateInput[], productId: string, manager: EntityManager): Promise<Variant[]> {
     const variantRepo = manager.getRepository(Variant);
     const result: Variant[] = [];
@@ -703,7 +750,7 @@ export class ProductsService {
     return result;
   }
 
-  private async generateCartesianVariants(options: OptionWithValues[], productId: string, manager: EntityManager): Promise<Variant[]> {
+  private async generateCartesianVariants(options: OptionWithValues[], productId: string, manager: EntityManager, price: number): Promise<Variant[]> {
     const variantRepo = manager.getRepository(Variant);
 
     // Size is computed from lengths BEFORE materialising anything.
@@ -722,7 +769,7 @@ export class ProductsService {
       variant.productId = productId;
       variant.sku = null;
       variant.title = combinations[i].map((valueId) => labelById.get(valueId) ?? "").join(" / ");
-      variant.price = 0;
+      variant.price = price;
       variant.position = i;
       variant.optionValueIds = combinations[i];
       variant.isActive = true;
