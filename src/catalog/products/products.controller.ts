@@ -15,6 +15,7 @@ import {
   UpdateMediaDto,
   BulkActionDto,
   VariantParamsDto,
+  ProductFacetsResponseDto,
 } from "./dto";
 import { OffsetPage } from "../../common/pagination/pagination";
 import { AppException } from "../../common/errors/app-exception";
@@ -28,6 +29,13 @@ export class ProductsController {
   async listProducts(@Query() query: ProductListQueryDto): Promise<OffsetPage<ProductListItemResponseDto>> {
     const { page, pageSize, status, q, tag, vendor } = query;
     return this.productsService.list(page, pageSize, { status, q, tag, vendor });
+  }
+
+  /** Declared BEFORE ":id" so "facets" is not parsed as an id. */
+  @Get("facets")
+  @RequirePermissions("products:read")
+  async facets(): Promise<ProductFacetsResponseDto> {
+    return this.productsService.facets();
   }
 
   @Post()

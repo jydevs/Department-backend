@@ -16,6 +16,7 @@ import {
   VariantUpdateInput,
   ProductDetailResponseDto,
   ProductListItemResponseDto,
+  ProductFacetsResponseDto,
   VariantResponseDto,
   OptionsUpdateInput,
   MediaUpdateInput,
@@ -47,6 +48,7 @@ export interface BulkActionResult {
 
 const MAX_VARIANTS = 100;
 const HANDLE_ATTEMPTS = 5;
+const FACET_LIMIT = 500;
 
 @Injectable()
 export class ProductsService {
@@ -180,6 +182,26 @@ export class ProductsService {
     }
 
     return this.mapToDetailDto(product, optionsWithValues, variants, mediaList);
+  }
+
+  /** Distinct tags / vendors / product types of non-deleted products (max FACET_LIMIT each, sorted). */
+  async facets(): Promise<ProductFacetsResponseDto> {
+    const manager = this.productRepository.manager;
+    const [tags, vendors, productTypes] = await Promise.all([
+      manager.query<{ v: string }[]>(
+        `SELECT DISTINCT t AS v FROM products p, unnest(p.tags) AS t WHERE p.deleted_at IS NULL ORDER BY v LIMIT $1`,
+        [FACET_LIMIT],
+      ),
+      manager.query<{ v: string }[]>(
+        `SELECT DISTINCT vendor AS v FROM products WHERE deleted_at IS NULL AND vendor IS NOT NULL AND vendor <> '' ORDER BY v LIMIT $1`,
+        [FACET_LIMIT],
+      ),
+      manager.query<{ v: string }[]>(
+        `SELECT DISTINCT product_type AS v FROM products WHERE deleted_at IS NULL AND product_type IS NOT NULL AND product_type <> '' ORDER BY v LIMIT $1`,
+        [FACET_LIMIT],
+      ),
+    ]);
+    return { tags: tags.map((r) => r.v), vendors: vendors.map((r) => r.v), productTypes: productTypes.map((r) => r.v) };
   }
 
   async list(
