@@ -234,9 +234,10 @@ export class AuthService implements OnModuleInit {
       throw AppException.notFound("User");
     }
 
-    // Verify password
+    // Verify password (a wrong one counts like a failed login: a stolen access token must not become an oracle for the password)
     const passwordValid = await this.passwordService.verify(password, user.passwordHash);
     if (!passwordValid) {
+      await this.recordFailedAuthenticated(user);
       throw AppException.unauthorized("Invalid password", "INVALID_CREDENTIALS");
     }
 
@@ -247,6 +248,7 @@ export class AuthService implements OnModuleInit {
 
     const totpValid = await this.totpService.verifyCode(code, user.totpSecretEnc);
     if (!totpValid) {
+      await this.recordFailedAuthenticated(user);
       throw AppException.badRequest("INVALID_OTP", "Invalid verification code");
     }
 
@@ -278,6 +280,7 @@ export class AuthService implements OnModuleInit {
     // Verify current password
     const valid = await this.passwordService.verify(currentPassword, user.passwordHash);
     if (!valid) {
+      await this.recordFailedAuthenticated(user);
       throw AppException.unauthorized("Current password is incorrect", "INVALID_CREDENTIALS");
     }
 
@@ -339,6 +342,12 @@ export class AuthService implements OnModuleInit {
    * Count a failed attempt in ONE atomic statement (parallel guesses cannot undercount) and lock after 5.
    * An expired lock restarts the count at 1 instead of re-locking on the very next miss.
    */
+  /** A failed re-authentication of a signed-in user (change password, disable 2FA) feeds the same lockout as login. */
+  private async recordFailedAuthenticated(user: StaffUser): Promise<void> {
+    const now = this.clock.now();
+    if (user.isActive && !(user.lockedUntil && user.lockedUntil > now)) await this.recordFailedLogin(user.id, now);
+  }
+
   private async recordFailedLogin(userId: string, now: Date): Promise<void> {
     const next = "CASE WHEN locked_until IS NOT NULL AND locked_until <= $2 THEN 1 ELSE failed_login_count + 1 END";
     await this.dataSource.query(

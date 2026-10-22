@@ -182,6 +182,7 @@ export class AuthController {
    * Verify password and code, disable 2FA.
    */
   @Post("2fa/disable")
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
   @ApiOperation({ summary: "Disable two-factor authentication" })
   async disableTwoFA(
     @CurrentActor() actor: Actor,
@@ -201,6 +202,7 @@ export class AuthController {
    * Change password with current password verification.
    */
   @Post("change-password")
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
   @ApiOperation({ summary: "Change user password" })
   async changePassword(
     @CurrentActor() actor: Actor,
