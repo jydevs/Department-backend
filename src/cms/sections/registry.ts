@@ -65,6 +65,14 @@ const s = <T extends z.ZodRawShape>(shape: T) => z.object(shape).strict();
 
 const linkItem = s({ label: z.string().min(1).max(60), url: link });
 
+/** Texts of the product cards (badges, missing price, quick add). Shared by every section that renders a product grid. */
+const productCardLabels = {
+  soldOutBadgeLabel: label.default("Agotado"),
+  saleBadgeLabel: label.default("Oferta"),
+  noPriceLabel: label.default("Precio no disponible"),
+  quickAddLabel: label.default("Añadir rápido"),
+};
+
 // ---- registry ---------------------------------------------------------------
 export const SECTION_REGISTRY = {
   "announcement-bar": {
@@ -258,6 +266,7 @@ export const SECTION_REGISTRY = {
       ctaHref: link.optional(),
       ctaVariant: buttonVariant.default("outline"),
       alignment: alignment.default("center"),
+      ...productCardLabels,
     }),
     blockTypes: {},
   },
@@ -471,8 +480,11 @@ export const SECTION_REGISTRY = {
       countLabel: label.default("artículos"),
       emptyTitle: label.default("Sin resultados"),
       emptyText: z.string().max(200).default("Prueba con otro filtro"),
-      soldOutBadgeLabel: label.default("Agotado"),
-      saleBadgeLabel: label.default("Oferta"),
+      ...productCardLabels,
+      /** "Ver más" button of a paginated collection, its loading text and its error. */
+      loadMoreLabel: label.default("Ver más"),
+      loadingMoreLabel: label.default("Cargando..."),
+      loadMoreErrorLabel: z.string().max(200).default("No se pudo cargar. Inténtalo de nuevo."),
     }),
     blockTypes: {},
   },
@@ -535,6 +547,20 @@ export const SECTION_REGISTRY = {
       removeLabel: label.default("Eliminar"),
       decreaseLabel: label.default("Quitar una unidad"),
       increaseLabel: label.default("Añadir una unidad"),
+      /** Line that can no longer be bought (deleted / unpublished product). */
+      unavailableMessage: z.string().max(200).default("Ya no está disponible. Elimínalo para continuar."),
+      discountLabel: label.default("Descuento"),
+      shippingLabel: label.default("Envío"),
+      shippingText: label.default("Se calcula al pagar"),
+      taxLabel: label.default("IVA"),
+      totalLabel: label.default("Total estimado"),
+      /** Shown under the totals when prices already include VAT. */
+      taxIncludedNote: z.string().max(200).default("Precios con IVA incluido. El envío se suma al elegir tu dirección."),
+      discountCodeLabel: label.default("Código de descuento"),
+      discountApplyLabel: cta.default("Aplicar"),
+      discountApplyingLabel: cta.default("Aplicando…"),
+      discountRemoveLabel: cta.default("Quitar"),
+      discountEmptyMessage: z.string().max(200).default("Escribe tu código de descuento."),
     }),
     blockTypes: {},
   },
