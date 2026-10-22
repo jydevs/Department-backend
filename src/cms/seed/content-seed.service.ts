@@ -3,6 +3,7 @@ import { DataSource } from "typeorm";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { seedDefaultContent } from "./default-content";
+import { ensureLegalLinks } from "./ensure-legal-links";
 
 /**
  * Seeds the default site content on boot when SEED_DEFAULT_CONTENT=true (the default).
@@ -22,6 +23,7 @@ export class ContentSeedService implements OnApplicationBootstrap {
     if (!this.env.SEED_DEFAULT_CONTENT) return;
     try {
       await seedDefaultContent(this.dataSource, { logger: this.logger });
+      await ensureLegalLinks(this.dataSource, { logger: this.logger });
     } catch (err) {
       this.logger.warn(`Default content was not seeded: ${err instanceof Error ? err.message : String(err)}`);
     }
