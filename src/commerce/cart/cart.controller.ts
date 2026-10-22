@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Public } from "../../common/auth/decorators";
 import { CartToken } from "./cart-token.decorator";
@@ -7,6 +7,7 @@ import {
   AddCartLineDto,
   CartLineParamDto,
   CartParamDto,
+  GetCartQueryDto,
   SetCartDiscountDto,
   UpdateCartLineDto,
   type CartCreatedResponse,
@@ -26,8 +27,8 @@ export class CartController {
   }
 
   @Get(":id")
-  get(@Param() { id }: CartParamDto, @CartToken() token: string): Promise<CartResponse> {
-    return this.carts.get(id, token);
+  get(@Param() { id }: CartParamDto, @CartToken() token: string, @Query() query: GetCartQueryDto): Promise<CartResponse> {
+    return this.carts.get(id, token, query);
   }
 
   @Post(":id/lines")
@@ -51,7 +52,7 @@ export class CartController {
 
   @Put(":id/discount")
   setDiscount(@Param() { id }: CartParamDto, @CartToken() token: string, @Body() body: SetCartDiscountDto): Promise<CartResponse> {
-    return this.carts.setDiscount(id, token, body.code);
+    return this.carts.setDiscount(id, token, body.code, body.email);
   }
 
   @Delete(":id")

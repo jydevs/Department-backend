@@ -11,6 +11,7 @@ import type { DiscountInvalidReason, Quote, QuoteDiscount, QuoteInput, QuoteLine
 interface VariantRow {
   id: string;
   product_id: string;
+  product_handle: string | null;
   product_title: string;
   variant_title: string;
   sku: string | null;
@@ -45,10 +46,11 @@ interface RateRow {
 interface TaxRow {
   prices_include_tax: boolean;
   rate_percent: string;
+  label: string | null;
 }
 
 const MAX_LINES = 100;
-const DEFAULT_TAX: { pricesIncludeTax: boolean; ratePercent: string } = { pricesIncludeTax: true, ratePercent: "19.00" };
+const DEFAULT_TAX: { pricesIncludeTax: boolean; ratePercent: string; label: string } = { pricesIncludeTax: true, ratePercent: "19.00", label: "IVA" };
 
 @Injectable()
 export class PricingService {
@@ -85,7 +87,7 @@ export class PricingService {
       variantIds.length === 0
         ? []
         : await em.query<VariantRow[]>(
-            `SELECT v.id, v.product_id, p.title AS product_title, v.title AS variant_title, v.sku, v.price, v.compare_at_price,
+            `SELECT v.id, v.product_id, p.handle AS product_handle, p.title AS product_title, v.title AS variant_title, v.sku, v.price, v.compare_at_price,
                     (v.is_active = true AND p.status = 'active' AND p.deleted_at IS NULL) AS sellable,
                     (SELECT m.url FROM product_media pm JOIN media m ON m.id = pm.media_id
                       WHERE pm.product_id = v.product_id AND (pm.variant_id IS NULL OR pm.variant_id = v.id)
@@ -121,6 +123,7 @@ export class PricingService {
       lines.push({
         variantId,
         productId: row.product_id,
+        productHandle: row.product_handle ?? null,
         productTitle: row.product_title,
         variantTitle: row.variant_title,
         sku: row.sku,
@@ -184,9 +187,9 @@ export class PricingService {
     }
 
     /* ── tax ── */
-    const taxRows = await em.query<TaxRow[]>(`SELECT prices_include_tax, rate_percent FROM tax_settings ORDER BY created_at ASC LIMIT 1`);
+    const taxRows = await em.query<TaxRow[]>(`SELECT prices_include_tax, rate_percent, label FROM tax_settings ORDER BY created_at ASC LIMIT 1`);
     const tax = taxRows[0]
-      ? { pricesIncludeTax: taxRows[0].prices_include_tax, ratePercent: taxRows[0].rate_percent }
+      ? { pricesIncludeTax: taxRows[0].prices_include_tax, ratePercent: taxRows[0].rate_percent, label: taxRows[0].label ?? DEFAULT_TAX.label }
       : DEFAULT_TAX;
     const rateHundredths = Math.round(Number(tax.ratePercent) * 100); // 19.00% -> 1900
     const taxBase = discountedSubtotal + shippingTotal;
@@ -206,6 +209,14 @@ export class PricingService {
       shippingTotal,
       shippingRate,
       taxTotal,
+      taxIncluded: tax.pricesIncludeTax,
+      taxRatePercent: Number(tax.ratePercent),
+      taxBreakdown: {
+        label: tax.label,
+        ratePercent: Number(tax.ratePercent),
+        netAmount: tax.pricesIncludeTax ? taxBase - taxTotal : taxBase,
+        taxAmount: taxTotal,
+      },
       total,
       warnings,
     };

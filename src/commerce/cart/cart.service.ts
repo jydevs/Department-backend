@@ -8,7 +8,7 @@ import { Clock } from "../../common/clock/clock";
 import { TransactionService } from "../../database/transaction.service";
 import { InventoryService } from "../../inventory/inventory.service";
 import { PricingService, type Quote } from "../pricing";
-import { CART_MAX_LINES, CART_MAX_QUANTITY, type CartCreatedResponse, type CartResponse } from "./cart.dto";
+import { CART_MAX_LINES, CART_MAX_QUANTITY, type CartCreatedResponse, type CartResponse, type GetCartQuery } from "./cart.dto";
 
 const CART_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -18,6 +18,7 @@ interface CartRow {
   discount_code: string | null;
   expires_at: Date;
   converted_order_id: string | null;
+  converted_order_number?: number | null;
 }
 
 interface CartLineRow {
@@ -48,9 +49,9 @@ export class CartService {
     return { id, token, expiresAt };
   }
 
-  async get(id: string, token: string): Promise<CartResponse> {
+  async get(id: string, token: string, query: GetCartQuery = {}): Promise<CartResponse> {
     const cart = await this.authenticate(this.dataSource.manager, id, token, false);
-    return this.view(this.dataSource.manager, cart);
+    return this.view(this.dataSource.manager, cart, query);
   }
 
   /** Validated cart quote for other modules (shipping rates, checkout). Same 404 rules as `get`. */
@@ -106,12 +107,12 @@ export class CartService {
     });
   }
 
-  async setDiscount(id: string, token: string, code: string | null): Promise<CartResponse> {
+  async setDiscount(id: string, token: string, code: string | null, email?: string): Promise<CartResponse> {
     return this.mutate(id, token, async (manager, cart) => {
       if (code !== null) {
         // Throws 422 DISCOUNT_INVALID with a reason if the code cannot be applied to this cart.
         const lines = await this.lines(manager, cart.id);
-        await this.pricing.quote({ lines: this.toQuoteLines(lines), discountCode: code }, manager);
+        await this.pricing.quote({ lines: this.toQuoteLines(lines), discountCode: code, email: email ?? null }, manager);
       }
       await manager.query(`UPDATE carts SET discount_code = $2, updated_at = now() WHERE id = $1`, [cart.id, code]);
       cart.discount_code = code;
@@ -159,7 +160,9 @@ export class CartService {
   /** 404 (never 403) when the cart does not exist, is expired or the token does not match. */
   private async authenticate(manager: EntityManager, id: string, token: string, lock: boolean): Promise<CartRow> {
     const rows = await manager.query<CartRow[]>(
-      `SELECT id, token_hash, discount_code, expires_at, converted_order_id FROM carts WHERE id = $1${lock ? " FOR UPDATE" : ""}`,
+      `SELECT c.id, c.token_hash, c.discount_code, c.expires_at, c.converted_order_id,
+              (SELECT o.order_number FROM orders o WHERE o.id = c.converted_order_id) AS converted_order_number
+         FROM carts c WHERE c.id = $1${lock ? " FOR UPDATE OF c" : ""}`,
       [id],
     );
     const cart = rows[0];
@@ -220,14 +223,20 @@ export class CartService {
     }
   }
 
-  private async view(manager: EntityManager, cart: CartRow): Promise<CartResponse> {
-    const { quote, itemCount } = await this.buildQuote(manager, cart);
+  private async view(manager: EntityManager, cart: CartRow, query: GetCartQuery = {}): Promise<CartResponse> {
+    const { quote, itemCount } = await this.buildQuote(manager, cart, {
+      shippingRateId: query.shippingRateId ?? null,
+      department: query.department ?? null,
+      email: query.email ?? null,
+    });
     return {
       id: cart.id,
       currency: "COP",
       discountCode: cart.discount_code,
       itemCount,
       expiresAt: new Date(cart.expires_at),
+      converted: cart.converted_order_id !== null,
+      convertedOrderNumber: cart.converted_order_number ?? null,
       quote,
     };
   }
