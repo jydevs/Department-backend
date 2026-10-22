@@ -228,6 +228,28 @@ export class CustomerAuthService implements OnModuleInit {
     await this.transactions.run((manager) => this.sendPasswordReset(manager, customer.id, customer.email, customer.firstName, now));
   }
 
+  /**
+   * Resends the verification link. Answers immediately (202) and works afterwards: only an existing, active,
+   * still unverified account gets a mail (and never more than one link every 2 minutes).
+   */
+  resendVerification(email: string): void {
+    this.defer("resendVerification", () => this.performResendVerification(email));
+  }
+
+  private async performResendVerification(email: string): Promise<void> {
+    const customer = await this.customers.findOne({ where: { email: email.toLowerCase() } });
+    if (!customer || !customer.isActive || customer.anonymizedAt || customer.emailVerifiedAt) return;
+    const now = this.clock.now();
+    await this.transactions.run(async (manager) => {
+      const token = await this.issueToken(manager, customer.id, "email_verify", VERIFY_TTL_MS, now);
+      if (!token) return;
+      await this.mail.enqueue(
+        { to: customer.email, template: "email_verify", data: { customerName: customer.firstName, verifyUrl: this.link("verify-email", token), expiresInHours: 48 } },
+        manager,
+      );
+    });
+  }
+
   /** Consumes the token atomically (single use), sets the password and kills every session. */
   async resetPassword(token: string, password: string): Promise<void> {
     const now = this.clock.now();

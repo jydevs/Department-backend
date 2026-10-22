@@ -11,6 +11,7 @@ import {
   CustomerLoginDto,
   ForgotPasswordDto,
   RegisterDto,
+  ResendVerificationDto,
   ResetPasswordDto,
   VerifyEmailDto,
   type CustomerLoginResponse,
@@ -92,6 +93,16 @@ export class CustomerAuthController {
   forgotPassword(@Body() dto: ForgotPasswordDto): MessageResponse {
     this.auth.forgotPassword(dto.email);
     return { message: "If the account exists, we sent you an email with instructions." };
+  }
+
+  @Post(["auth/resend-verification", "resend-verification"])
+  @Public()
+  @HttpCode(202)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({ summary: "Resend the email verification link (always 202: does not reveal whether the account exists)" })
+  resendVerification(@Body() dto: ResendVerificationDto): MessageResponse {
+    this.auth.resendVerification(dto.email);
+    return { message: "If the account exists and is not verified yet, we sent you a new verification email." };
   }
 
   @Post("reset-password")

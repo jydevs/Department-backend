@@ -131,6 +131,8 @@ export class CustomersAccountService {
       if (input.postalCode !== undefined) address.postalCode = input.postalCode;
       if (input.documentType !== undefined) address.documentType = input.documentType;
       if (input.documentNumber !== undefined) address.documentNumber = input.documentNumber;
+      // removing the document type removes its number too, unless a new number is sent in the same request
+      if (input.documentType === null && input.documentNumber === undefined) address.documentNumber = null;
 
       // the default can only be moved to another address, never simply switched off
       if (input.isDefault === true && !address.isDefault) {

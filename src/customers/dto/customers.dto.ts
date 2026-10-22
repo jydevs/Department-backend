@@ -35,6 +35,9 @@ export class CustomerLoginDto extends createZodDto(loginSchema) {}
 export const forgotPasswordSchema = z.object({ email }).strict();
 export class ForgotPasswordDto extends createZodDto(forgotPasswordSchema) {}
 
+export const resendVerificationSchema = z.object({ email }).strict();
+export class ResendVerificationDto extends createZodDto(resendVerificationSchema) {}
+
 export const resetPasswordSchema = z.object({ token: opaqueToken, password: passwordSchema }).strict();
 export class ResetPasswordDto extends createZodDto(resetPasswordSchema) {}
 
@@ -66,7 +69,16 @@ export const createAddressSchema = addressSchema.extend(addressExtras).strict();
 export type CreateAddressInput = z.infer<typeof createAddressSchema>;
 export class CreateAddressDto extends createZodDto(createAddressSchema) {}
 
-export const updateAddressSchema = addressSchema.partial().extend(addressExtras).strict();
+/** On update the document can be removed: `null` (or an empty string) clears it; the 4-character minimum only applies to a real value. */
+const clearableDocument = {
+  documentType: addressSchema.shape.documentType.nullable(),
+  documentNumber: z
+    .union([z.null(), z.string().trim().max(20).regex(NO_CONTROL, "Invalid characters")])
+    .transform((v) => (v === "" ? null : v))
+    .refine((v) => v === null || v.length >= 4, "Too small: expected at least 4 characters")
+    .optional(),
+};
+export const updateAddressSchema = addressSchema.partial().extend(clearableDocument).extend(addressExtras).strict();
 export type UpdateAddressInput = z.infer<typeof updateAddressSchema>;
 export class UpdateAddressDto extends createZodDto(updateAddressSchema) {}
 
