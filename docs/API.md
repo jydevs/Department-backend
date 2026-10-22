@@ -312,8 +312,8 @@ Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `
 | GET | `/admin/newsletter/export` | A:marketing:write |
 | POST | `/admin/newsletter/:id/unsubscribe` · `/admin/email-templates/:key/preview` · `/:key/test-send` | A:marketing:write |
 | PUT | `/admin/email-templates/:key` | A:marketing:write |
-| POST | `/storefront/newsletter` · `/storefront/newsletter/unsubscribe` · `/storefront/contact` (acepta `phone` opcional: 7–20 dígitos, `+` inicial opcional; 400 si está mal formado; se devuelve en `GET /admin/contact-messages`) | — |
-| GET | `/storefront/newsletter/confirm` · `/storefront/newsletter/unsubscribe` | — |
+| POST | `/storefront/newsletter` · `/storefront/newsletter/confirm?token=` · `/storefront/newsletter/unsubscribe?token=` · `/storefront/contact` (acepta `phone` opcional: 7–20 dígitos, `+` inicial opcional; 400 si está mal formado; se devuelve en `GET /admin/contact-messages`) | — |
+| GET | `/storefront/newsletter/confirm` (**deprecated**: cambia estado por GET; usar el POST) · `/storefront/newsletter/unsubscribe` (solo valida el token: 200 `{ status: "valid" }` o 400 `INVALID_TOKEN`; ya **no** da de baja, la baja es el POST) | — |
 
 ### Analítica y mantenimiento
 | Método | Ruta | Permiso |

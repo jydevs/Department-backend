@@ -134,6 +134,13 @@ export class NewsletterService {
     });
   }
 
+  /** Read-only check of an unsubscribe link (GET): never changes state, so mail scanners and prefetchers cannot unsubscribe anybody. */
+  async checkUnsubscribeToken(token: string): Promise<NewsletterTokenResponse> {
+    const id = this.verifyUnsubscribeToken(token);
+    if (!id || !(await this.subscribers.exists({ where: { id } }))) throw AppException.badRequest("INVALID_TOKEN", "The link is invalid");
+    return { status: "valid" };
+  }
+
   async unsubscribeByToken(token: string): Promise<NewsletterTokenResponse> {
     const id = this.verifyUnsubscribeToken(token);
     if (!id) throw AppException.badRequest("INVALID_TOKEN", "The link is invalid");

@@ -89,5 +89,6 @@ export interface AcceptedResponse {
 }
 
 export interface NewsletterTokenResponse {
-  status: "subscribed" | "unsubscribed";
+  /** `valid`: GET /newsletter/unsubscribe only checks the token, it changes nothing. */
+  status: "subscribed" | "unsubscribed" | "valid";
 }

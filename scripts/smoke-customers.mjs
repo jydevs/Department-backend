@@ -208,6 +208,10 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
       assert(row?.status === "subscribed", `status ${row?.status}`);
       const bad = await fetch(`${api}/storefront/newsletter/confirm?token=nope`);
       assert(bad.status === 400, `bad token → ${bad.status}`);
+      const badPost = await fetch(`${api}/storefront/newsletter/confirm?token=${"a".repeat(43)}`, { method: "POST" });
+      assert(badPost.status === 400, `POST confirm bad token → ${badPost.status}`);
+      const badGetUnsub = await fetch(`${api}/storefront/newsletter/unsubscribe?token=${"a".repeat(60)}`);
+      assert(badGetUnsub.status === 400, `GET unsubscribe (validate only) bad token → ${badGetUnsub.status}`);
     });
 
     await check("marketing: contact form stores messages; the honeypot silently drops bots", async () => {
