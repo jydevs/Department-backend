@@ -17,7 +17,7 @@ import {
   type CustomerDataExportDto,
   type CustomerProfileDto,
   type MessageResponse,
-  type PublicOrderDto,
+  type PublicOrderDetailDto,
   type PublicOrderSummaryDto,
 } from "./dto/customers.dto";
 
@@ -88,7 +88,7 @@ export class CustomersAccountController {
 
   @Get("orders/:orderNumber")
   @ApiOperation({ summary: "One of my orders" })
-  async getOrder(@CurrentCustomerId() id: string, @Param() { orderNumber }: OrderNumberParamDto): Promise<PublicOrderDto> {
+  async getOrder(@CurrentCustomerId() id: string, @Param() { orderNumber }: OrderNumberParamDto): Promise<PublicOrderDetailDto> {
     return this.account.getOrder(id, orderNumber);
   }
 

@@ -39,6 +39,9 @@ const getCartQuerySchema = z
 export type GetCartQuery = z.infer<typeof getCartQuerySchema>;
 export class GetCartQueryDto extends createZodDto(getCartQuerySchema) {}
 
+/** `X-Quote-Email` header: alternative to `?email=` that keeps the address out of URLs. */
+export const quoteEmailHeaderSchema = optionalEmail;
+
 const cartParamSchema = z.object({ id: z.uuid() });
 export class CartParamDto extends createZodDto(cartParamSchema) {}
 

@@ -1,6 +1,7 @@
 import { createZodDto } from "nestjs-zod";
 import { z } from "zod";
 import { addressSchema } from "../../commerce/common/address.schema";
+import type { PaymentInstructions } from "../../commerce/payments/payment-provider";
 
 /* ── shared field rules ───────────────────────────────────── */
 
@@ -213,6 +214,22 @@ export interface PublicOrderDto extends PublicOrderSummaryDto {
   cancelledAt: Date | null;
   lines: PublicOrderLineDto[];
   fulfillments: PublicFulfillmentDto[];
+}
+
+/** Line of `GET /storefront/customers/me/orders/:orderNumber`: the export line plus the ids needed to link/re-buy. */
+export interface PublicOrderDetailLineDto extends PublicOrderLineDto {
+  variantId: string;
+  productId: string;
+  /** Current handle of the product (null if it no longer exists). */
+  productHandle: string | null;
+}
+
+/** One of my orders: same payment data as the public order status (`payment.instructions` only while `pending`). */
+export interface PublicOrderDetailDto extends Omit<PublicOrderDto, "lines"> {
+  lines: PublicOrderDetailLineDto[];
+  payment: { provider: string; status: string; method: string | null; instructions: PaymentInstructions | null } | null;
+  /** Only while the order is `pending`. */
+  reservedUntil: Date | null;
 }
 
 export interface CustomerDataExportDto {

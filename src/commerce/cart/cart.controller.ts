@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
+import { AppException } from "../../common/errors/app-exception";
 import { Public } from "../../common/auth/decorators";
 import { CartToken } from "./cart-token.decorator";
 import { CartService } from "./cart.service";
@@ -7,6 +8,7 @@ import {
   AddCartLineDto,
   CartLineParamDto,
   CartParamDto,
+  quoteEmailHeaderSchema,
   GetCartQueryDto,
   SetCartDiscountDto,
   UpdateCartLineDto,
@@ -27,8 +29,20 @@ export class CartController {
   }
 
   @Get(":id")
-  get(@Param() { id }: CartParamDto, @CartToken() token: string, @Query() query: GetCartQueryDto): Promise<CartResponse> {
-    return this.carts.get(id, token, query);
+  get(
+    @Param() { id }: CartParamDto,
+    @CartToken() token: string,
+    @Query() query: GetCartQueryDto,
+    @Headers("x-quote-email") quoteEmail?: string,
+  ): Promise<CartResponse> {
+    // `X-Quote-Email` is an alternative to `?email=` (the query wins if both come); the value is never logged
+    let email = query.email;
+    if (email === undefined && quoteEmail !== undefined && quoteEmail !== "") {
+      const parsed = quoteEmailHeaderSchema.safeParse(quoteEmail);
+      if (!parsed.success) throw AppException.badRequest("VALIDATION_ERROR", "The X-Quote-Email header is not a valid e-mail");
+      email = parsed.data;
+    }
+    return this.carts.get(id, token, email === undefined ? query : { ...query, email });
   }
 
   @Post(":id/lines")

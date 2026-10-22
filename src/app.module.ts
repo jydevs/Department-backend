@@ -52,6 +52,7 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,100}$/;
               'req.headers["x-api-key"]',
               'req.headers["x-storefront-key"]',
               'req.headers["x-event-checksum"]',
+              'req.headers["x-quote-email"]',
               'res.headers["set-cookie"]',
             ],
             censor: "[redacted]",

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Not, Repository } from "typeorm";
 import { Clock } from "../common/clock/clock";
@@ -6,6 +6,8 @@ import { AppException } from "../common/errors/app-exception";
 import { OffsetPage, toOffsetPage } from "../common/pagination/pagination";
 import { AuditService } from "../audit/audit.service";
 import { Order } from "../commerce/entities/order.entity";
+import { Payment } from "../commerce/entities/payment.entity";
+import { PAYMENT_PROVIDER, PaymentProvider, type PaymentInstructions } from "../commerce/payments/payment-provider";
 import { TransactionService } from "../database/transaction.service";
 import { PasswordService } from "../identity/auth/password.service";
 import type {
@@ -13,6 +15,7 @@ import type {
   CustomerAddressDto,
   CustomerDataExportDto,
   CustomerProfileDto,
+  PublicOrderDetailDto,
   PublicOrderDto,
   PublicOrderSummaryDto,
   UpdateAddressInput,
@@ -37,6 +40,7 @@ export class CustomersAccountService {
     private readonly erasure: CustomerErasureService,
     private readonly audit: AuditService,
     private readonly clock: Clock,
+    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
   /* ── profile ──────────────────────────────────────────── */
@@ -186,10 +190,39 @@ export class CustomersAccountService {
   }
 
   /** Only the caller's own order; any other number answers 404 exactly like a missing one. */
-  async getOrder(customerId: string, orderNumber: number): Promise<PublicOrderDto> {
+  async getOrder(customerId: string, orderNumber: number): Promise<PublicOrderDetailDto> {
     const order = await this.orders.findOne({ where: { customerId, orderNumber, status: Not("expired") }, relations: { lines: true, fulfillments: true } });
     if (!order) throw AppException.notFound("Order");
-    return toPublicOrder(order, order.lines ?? [], order.fulfillments ?? []);
+    const lines = order.lines ?? [];
+    const manager = this.orders.manager;
+    const handles = new Map<string, string>();
+    const productIds = [...new Set(lines.map((l) => l.productId))];
+    if (productIds.length > 0) {
+      const rows = await manager.query<{ id: string; handle: string }[]>("SELECT id, handle FROM products WHERE id = ANY($1::uuid[])", [productIds]);
+      for (const r of rows) handles.set(r.id, r.handle);
+    }
+    const payment = await manager.getRepository(Payment).findOne({ where: { orderId: order.id }, order: { createdAt: "DESC" } });
+    // same rule as the public order status: instructions only while pending and for the active provider
+    let instructions: PaymentInstructions | null = null;
+    if (order.status === "pending" && order.paymentProvider === this.provider.name) {
+      try {
+        instructions = this.provider.createPayment(order);
+      } catch {
+        instructions = null;
+      }
+    }
+    const base = toPublicOrder(order, lines, order.fulfillments ?? []);
+    return {
+      ...base,
+      lines: base.lines.map((l, i) => ({
+        ...l,
+        variantId: lines[i].variantId,
+        productId: lines[i].productId,
+        productHandle: handles.get(lines[i].productId) ?? null,
+      })),
+      payment: payment ? { provider: payment.provider, status: payment.status, method: payment.method ?? null, instructions } : null,
+      reservedUntil: order.status === "pending" ? (order.reservedUntil ?? null) : null,
+    };
   }
 
   /* ── Habeas Data: export and erase ────────────────────── */

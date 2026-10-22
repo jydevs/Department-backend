@@ -4,6 +4,7 @@ import { DatabaseModule } from "../database/database.module";
 import { Fulfillment } from "../commerce/entities/fulfillment.entity";
 import { Order } from "../commerce/entities/order.entity";
 import { OrderLine } from "../commerce/entities/order-line.entity";
+import { PaymentsModule } from "../commerce/payments/payments.module";
 import { PasswordService } from "../identity/auth/password.service";
 import { MailModule } from "../mail/mail.module";
 import { CustomerAuthController } from "./auth/customer-auth.controller";
@@ -24,6 +25,7 @@ import { Customer, CustomerAddress, CustomerRefreshToken, CustomerToken } from "
     TypeOrmModule.forFeature([Customer, CustomerAddress, CustomerRefreshToken, CustomerToken, Order, OrderLine, Fulfillment]),
     DatabaseModule,
     MailModule,
+    PaymentsModule,
   ],
   controllers: [CustomerAuthController, CustomersAccountController, CustomersAdminController],
   providers: [
