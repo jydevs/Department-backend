@@ -70,6 +70,27 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
       assert(!/token=/.test(mail.body_text) || mail.body_text === "", "account_exists e-mail must not carry a token");
     });
 
+    await check("customers: resend-verification is a generic 202 and only mails unverified accounts (3/min throttle: exactly 3 calls)", async () => {
+      const mails = async () => (await db.query("SELECT count(*)::int AS n FROM email_outbox WHERE \"to\" = $1 AND template = 'email_verify'", [email])).rows[0].n;
+      const ghost = await call("POST", "/storefront/customers/auth/resend-verification", { email: `ghost-${stamp}@dept.test` });
+      assert(ghost.status === 202, `unknown e-mail → ${ghost.status}`);
+      // the link issued at registration is younger than the 2-minute cooldown: no second one, still 202
+      const known = await call("POST", "/storefront/customers/auth/resend-verification", { email });
+      assert(known.status === 202, `unverified account → ${known.status}`);
+      assert((await ghost.json()).message === (await known.json()).message, "responses must be identical");
+      const before = await mails();
+      await new Promise((res) => setTimeout(res, 1000));
+      assert((await mails()) === before, "cooldown: no second link within 2 minutes");
+      await db.query("UPDATE customer_tokens SET created_at = created_at - interval '3 minutes' WHERE customer_id = (SELECT id FROM customers WHERE email = $1) AND type = 'email_verify'", [email]);
+      assert((await call("POST", "/storefront/customers/auth/resend-verification", { email })).status === 202, "resend");
+      let after = before;
+      for (let i = 0; i < 20 && after === before; i++) {
+        await new Promise((res) => setTimeout(res, 500));
+        after = await mails();
+      }
+      assert(after === before + 1, `expected a new verification mail (${before} → ${after})`);
+    });
+
     await check("customers: e-mail verification token works once", async () => {
       const token = await tokenFor(email, "email_verify");
       await ok(await call("POST", "/storefront/customers/verify-email", { token, password: password1 }), "verify");
@@ -116,6 +137,14 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
       assert(list.filter((x) => x.isDefault).length === 1, "more than one default");
       await ok(await call("DELETE", `/storefront/customers/me/addresses/${a.id}`, undefined, access), "delete");
       assert(b.id, "no id");
+      const withDoc = await ok(await call("PATCH", `/storefront/customers/me/addresses/${b.id}`, { documentType: "CC", documentNumber: "12345678" }, access), "set document");
+      assert(withDoc.documentType === "CC" && withDoc.documentNumber === "12345678", "document not saved");
+      const short = await call("PATCH", `/storefront/customers/me/addresses/${b.id}`, { documentNumber: "123" }, access);
+      assert(short.status === 400, `3-char document → ${short.status}`);
+      const cleared = await ok(await call("PATCH", `/storefront/customers/me/addresses/${b.id}`, { documentType: null, documentNumber: null }, access), "clear document");
+      assert(cleared.documentType === null && cleared.documentNumber === null, "document not cleared");
+      const kept = await ok(await call("PATCH", `/storefront/customers/me/addresses/${b.id}`, { city: "Medellín" }, access), "patch other field");
+      assert(kept.city === "Medellín" && kept.documentType === null, "unrelated patch changed the document");
     });
 
     if (orderNumber) {

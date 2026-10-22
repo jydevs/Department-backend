@@ -90,6 +90,37 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     await call("DELETE", `/admin/shipping/zones/${zone.id}`, undefined, ownerToken);
   });
 
+  await check("commerce: cart quote with shippingRateId+department adds shipping, IVA breakdown and product handle (optional)", async () => {
+    const plain = (await ok(await call("GET", `/storefront/carts/${cart.id}`, undefined, undefined, cart.hdr), "plain cart")).quote;
+    assert(plain.shippingTotal === 0 && plain.shippingRate === null, "plain quote must not include shipping");
+    assert(typeof plain.taxIncluded === "boolean" && typeof plain.taxRatePercent === "number", "taxIncluded/taxRatePercent missing");
+    assert(plain.lines[0].productHandle === handle, `productHandle ${plain.lines[0].productHandle} !== ${handle}`);
+    const withShip = (await ok(await call("GET", `/storefront/carts/${cart.id}?shippingRateId=${rateId}&department=Cundinamarca`, undefined, undefined, cart.hdr), "ship cart")).quote;
+    assert(withShip.shippingTotal === 15000 && withShip.shippingRate?.id === rateId, `shippingTotal ${withShip.shippingTotal}`);
+    const b = withShip.taxBreakdown;
+    const base = withShip.subtotal - withShip.discountTotal + withShip.shippingTotal;
+    assert(b && b.taxAmount === withShip.taxTotal && b.ratePercent === withShip.taxRatePercent, "taxBreakdown mismatch");
+    assert(withShip.total === (withShip.taxIncluded ? base : base + withShip.taxTotal), `total ${withShip.total}`);
+    assert(b.netAmount === (withShip.taxIncluded ? base - withShip.taxTotal : base), "netAmount");
+    const half = await call("GET", `/storefront/carts/${cart.id}?shippingRateId=${rateId}`, undefined, undefined, cart.hdr);
+    assert(half.status === 400, `shippingRateId without department → ${half.status}`);
+    const nope = await call("GET", `/storefront/carts/${cart.id}?shippingRateId=${crypto.randomUUID()}&department=Cundinamarca`, undefined, undefined, cart.hdr);
+    assert(nope.status === 422, `unknown rate → ${nope.status}`);
+    const noTok = await fetch(`${api}/storefront/shipping-rates?department=Cundinamarca&cartId=${cart.id}`);
+    assert(noTok.status === 400 || noTok.status === 404, `shipping-rates without X-Cart-Token → ${noTok.status}`);
+  });
+
+  await check("commerce: GET /admin/inventory filters by variantId and productId", async () => {
+    const byVariant = items(await ok(await call("GET", `/admin/inventory?variantId=${variantId}`, undefined, ownerToken), "by variant"));
+    assert(byVariant.length >= 1 && byVariant.every((r) => r.variantId === variantId), "variantId filter");
+    const productId = byVariant[0].product?.id ?? byVariant[0].productId;
+    assert(productId, "inventory row has no product id");
+    const byProduct = items(await ok(await call("GET", `/admin/inventory?productId=${productId}`, undefined, ownerToken), "by product"));
+    assert(byProduct.length >= 1 && byProduct.every((r) => r.variantId === variantId), "productId filter");
+    const none = items(await ok(await call("GET", `/admin/inventory?productId=${crypto.randomUUID()}`, undefined, ownerToken), "no match"));
+    assert(none.length === 0, "unknown productId should match nothing");
+  });
+
   await check("commerce: checkout is idempotent; other body with same key → 422; stock is reserved", async () => {
     const key = `idem-${stamp}-1`;
     const r1 = await doCheckout(cart, key);
@@ -106,6 +137,15 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     assert(other.status === 422, `changed body → ${other.status}`);
     assert((await available(handle)) === false, "stock should be reserved (unavailable)");
     orderId = await orderIdByNumber(order.orderNumber);
+  });
+
+  await check("commerce: converted cart is flagged; pending public order carries variantId, productHandle and payment instructions", async () => {
+    const c = await ok(await call("GET", `/storefront/carts/${cart.id}`, undefined, undefined, cart.hdr), "converted cart");
+    assert(c.converted === true && c.convertedOrderNumber === order.orderNumber, `converted ${c.converted}/${c.convertedOrderNumber}`);
+    const pub = await ok(await fetch(`${api}/storefront/orders/${order.orderNumber}?token=${orderToken}`), "public order");
+    assert(pub.lines[0].variantId === variantId && pub.lines[0].productHandle === handle, "line variantId/productHandle");
+    const ins = pub.payment?.instructions;
+    assert(ins && ins.reference === order.payment.reference && ins.provider === order.payment.provider && ins.amountInCents === order.payment.amountInCents, "payment instructions missing or different");
   });
 
   await check("commerce: webhook with a bad signature → 401; mock approval → order open/paid (idempotent)", async () => {
@@ -178,6 +218,26 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     const results = await Promise.all(carts.map((c, i) => doCheckout(c, `idem-${stamp}-race-${i}`, { email: `race${i}-${stamp}@dept.test` })));
     const wins = results.filter((r) => r.status < 300).length;
     assert(wins === 1, `${wins} checkouts redeemed a single-use code (${results.map((r) => r.status)})`);
+  });
+
+  await check("commerce: a once-per-email code is rejected as already_used when the cart sends the e-mail", async () => {
+    const prod = await newProduct(`Smoke Once ${stamp}`, 3);
+    const once = `ONCE${stamp}`;
+    const buyer = `once-${stamp}@dept.test`;
+    await ok(await call("POST", "/admin/discounts", { code: once, title: "once", type: "fixed", value: 5000, oncePerEmail: true }, ownerToken), "once discount");
+    const c1 = await newCart();
+    await ok(await addLine(c1, prod.variantId, 1), "add");
+    await ok(await call("PUT", `/storefront/carts/${c1.id}/discount`, { code: once, email: buyer }, undefined, c1.hdr), "apply (unused)");
+    await ok(await doCheckout(c1, `idem-${stamp}-once`, { email: buyer }), "checkout once");
+    const c2 = await newCart();
+    await ok(await addLine(c2, prod.variantId, 1), "add 2");
+    const used = await call("PUT", `/storefront/carts/${c2.id}/discount`, { code: once, email: buyer.toUpperCase() }, undefined, c2.hdr);
+    const body = await used.json();
+    assert(used.status === 422 && body.details?.reason === "already_used", `already_used → ${used.status} ${JSON.stringify(body)}`);
+    const other = await call("PUT", `/storefront/carts/${c2.id}/discount`, { code: once, email: `new-${stamp}@dept.test` }, undefined, c2.hdr);
+    assert(other.status === 200, `other e-mail → ${other.status}`);
+    const noEmail = await call("PUT", `/storefront/carts/${c2.id}/discount`, { code: once }, undefined, c2.hdr);
+    assert(noEmail.status === 200, `no e-mail still accepted → ${noEmail.status}`);
   });
 
   await check("commerce: dev mock endpoint validates input; shipping/discount admin is permission-guarded", async () => {
