@@ -769,6 +769,7 @@ export class ProductsService {
         allowBackorder: v.allowBackorder,
         optionValueIds: v.optionValueIds,
         isActive: v.isActive,
+        version: v.version,
       })),
       media: media.map((m) => ({ id: m.id, url: m.url, alt: m.alt ?? null, width: m.width ?? null, height: m.height ?? null, mimeType: m.mimeType ?? null })),
       createdAt: product.createdAt,

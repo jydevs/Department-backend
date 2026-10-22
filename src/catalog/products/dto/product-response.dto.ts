@@ -29,6 +29,8 @@ export const variantForResponseSchema = z.object({
   allowBackorder: z.boolean(),
   optionValueIds: z.array(z.string().uuid()),
   isActive: z.boolean(),
+  /** Optimistic-lock token required by PATCH /admin/products/:id/variants/:variantId. */
+  version: z.number().int(),
 });
 
 export type VariantForResponse = z.infer<typeof variantForResponseSchema>;
