@@ -51,12 +51,20 @@ export class TOTPService {
    * Returns true if valid, false otherwise.
    */
   async verifyCode(code: string, encryptedSecret: string): Promise<boolean> {
+    return (await this.verifyStep(code, encryptedSecret)) !== null;
+  }
+
+  /**
+   * Like `verifyCode`, but returns the matched time step and rejects steps <= `afterStep` (replay protection).
+   * The caller must store the step atomically (see AuthService.verifyTotpOnce).
+   */
+  async verifyStep(code: string, encryptedSecret: string, afterStep?: number | null): Promise<number | null> {
     try {
       const secret = this.decryptSecret(encryptedSecret);
-      const result = await this.totp.verify(code, { secret });
-      return result.valid;
+      const result = await this.totp.verify(code, { secret, ...(afterStep != null ? { afterTimeStep: afterStep } : {}) });
+      return result.valid ? result.timeStep : null;
     } catch {
-      return false;
+      return null;
     }
   }
 

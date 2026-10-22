@@ -8,6 +8,7 @@ import { AppException } from "../../common/errors/app-exception";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { AuditService } from "../../audit/audit.service";
+import { affectedCount } from "../../common/sql/query-result";
 import { TransactionService } from "../../database/transaction.service";
 import { RefreshToken, StaffUser } from "../entities";
 import { PasswordService } from "./password.service";
@@ -75,7 +76,7 @@ export class AuthService implements OnModuleInit {
     if (user.totpEnabled) {
       if (!totp) throw AppException.unauthorized("Two-factor authentication required", "TWO_FACTOR_REQUIRED");
       const ok = /^\d{6}$/.test(totp)
-        ? await this.totpService.verifyCode(totp, user.totpSecretEnc!)
+        ? await this.verifyTotpOnce(user, totp)
         : await this.consumeRecoveryCode(user.id, totp);
       if (!ok) {
         await this.recordFailedLogin(user.id, now);
@@ -197,7 +198,7 @@ export class AuthService implements OnModuleInit {
     if (user.totpEnabled) throw AppException.conflict("2FA_ALREADY_ENABLED", "Two-factor authentication is already enabled");
 
     const { secret, uri } = this.totpService.generateSecret(user.email);
-    await this.staffUserRepo.update({ id: staffUserId }, { totpSecretEnc: secret });
+    await this.staffUserRepo.update({ id: staffUserId }, { totpSecretEnc: secret, totpLastStep: null });
     return { otpauthUrl: uri };
   }
 
@@ -211,7 +212,8 @@ export class AuthService implements OnModuleInit {
     if (!(await this.passwordService.verify(password, user.passwordHash))) {
       throw AppException.unauthorized("Invalid password", "INVALID_CREDENTIALS");
     }
-    if (!(await this.totpService.verifyCode(code, user.totpSecretEnc))) {
+    const enrolStep = await this.totpService.verifyStep(code, user.totpSecretEnc);
+    if (enrolStep === null) {
       throw AppException.badRequest("INVALID_OTP", "Invalid verification code");
     }
 
@@ -219,7 +221,7 @@ export class AuthService implements OnModuleInit {
     const recoveryCodesHash = await Promise.all(recoveryCodes.map((c) => this.passwordService.hash(c)));
 
     await this.transactionService.run(async (manager) => {
-      await manager.update(StaffUser, { id: staffUserId }, { totpEnabled: true, recoveryCodesHash });
+      await manager.update(StaffUser, { id: staffUserId }, { totpEnabled: true, recoveryCodesHash, totpLastStep: enrolStep });
       await this.recordAudit({ action: "2FA_ENABLED", entityType: "StaffUser", entityId: staffUserId, manager });
     });
     return recoveryCodes;
@@ -246,7 +248,7 @@ export class AuthService implements OnModuleInit {
       throw AppException.badRequest("2FA_NOT_ENABLED", "Two-factor authentication is not enabled");
     }
 
-    const totpValid = await this.totpService.verifyCode(code, user.totpSecretEnc);
+    const totpValid = await this.verifyTotpOnce(user, code);
     if (!totpValid) {
       await this.recordFailedAuthenticated(user);
       throw AppException.badRequest("INVALID_OTP", "Invalid verification code");
@@ -256,6 +258,7 @@ export class AuthService implements OnModuleInit {
       await manager.update(StaffUser, { id: staffUserId }, {
         totpSecretEnc: null,
         totpEnabled: false,
+        totpLastStep: null,
         recoveryCodesHash: [],
       });
 
@@ -342,6 +345,21 @@ export class AuthService implements OnModuleInit {
    * Count a failed attempt in ONE atomic statement (parallel guesses cannot undercount) and lock after 5.
    * An expired lock restarts the count at 1 instead of re-locking on the very next miss.
    */
+  /**
+   * Verifies a TOTP code and burns its time step: the UPDATE only succeeds when the step is newer than the stored one,
+   * so the same code cannot be used twice (even by two simultaneous requests).
+   */
+  private async verifyTotpOnce(user: StaffUser, code: string): Promise<boolean> {
+    if (!user.totpSecretEnc) return false;
+    const step = await this.totpService.verifyStep(code, user.totpSecretEnc, user.totpLastStep);
+    if (step === null) return false;
+    const res = await this.dataSource.query(
+      "UPDATE staff_users SET totp_last_step = $2 WHERE id = $1 AND (totp_last_step IS NULL OR totp_last_step < $2) RETURNING id",
+      [user.id, step],
+    );
+    return affectedCount(res) === 1;
+  }
+
   /** A failed re-authentication of a signed-in user (change password, disable 2FA) feeds the same lockout as login. */
   private async recordFailedAuthenticated(user: StaffUser): Promise<void> {
     const now = this.clock.now();

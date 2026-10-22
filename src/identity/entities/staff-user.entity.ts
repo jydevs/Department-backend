@@ -40,6 +40,10 @@ export class StaffUser extends VersionedEntity {
   @Column({ type: "boolean", default: false })
   totpEnabled!: boolean;
 
+  /** Last accepted TOTP time step: codes of that step or older are rejected (no replay inside the 30 s window). */
+  @Column({ type: "integer", nullable: true })
+  totpLastStep?: number | null;
+
   @Column({ type: "text", array: true, default: "{}" })
   recoveryCodesHash!: string[];
 
