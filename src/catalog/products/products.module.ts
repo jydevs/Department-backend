@@ -4,10 +4,11 @@ import { Product, Variant, ProductOption, ProductOptionValue, ProductMedia, Medi
 import { ProductsService } from "./products.service";
 import { ProductsController } from "./products.controller";
 import { AuditModule } from "../../audit/audit.module";
+import { CatalogRevalidationModule } from "../revalidation/catalog-revalidation.module";
 import { DatabaseModule } from "../../database/database.module";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product, Variant, ProductOption, ProductOptionValue, ProductMedia, Media]), AuditModule, DatabaseModule],
+  imports: [TypeOrmModule.forFeature([Product, Variant, ProductOption, ProductOptionValue, ProductMedia, Media]), AuditModule, DatabaseModule, CatalogRevalidationModule],
   providers: [ProductsService],
   controllers: [ProductsController],
   exports: [ProductsService],

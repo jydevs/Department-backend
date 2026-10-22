@@ -8,6 +8,7 @@ import { AppException } from "../../common/errors/app-exception";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
 import { Clock } from "../../common/clock/clock";
+import { CatalogRevalidationService } from "../revalidation/catalog-revalidation.service";
 import { escapeLike } from "../../common/sql/escape-like";
 import {
   ProductCreateInput,
@@ -58,6 +59,7 @@ export class ProductsService {
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
     private readonly clock: Clock,
+    private readonly catalogRevalidation: CatalogRevalidationService,
   ) {}
 
   /* ───────────── create ───────────── */
@@ -136,6 +138,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [savedProduct.id] });
       return (await this.findById(savedProduct.id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -365,6 +368,7 @@ export class ProductsService {
         if (!affected) throw AppException.conflict("CONCURRENT_UPDATE", "The product was modified concurrently");
 
         await this.auditService.record({ action: "product:update", entityType: "Product", entityId: id, diff }, manager);
+        this.catalogRevalidation.invalidate(manager, { productIds: [id], productHandles: set.handle ? [product.handle] : [] });
       }
 
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
@@ -388,6 +392,9 @@ export class ProductsService {
   /** Soft delete + release SKUs + deactivate variants + drop collection membership, all on the caller's transaction. */
   private async softDeleteProducts(ids: string[], manager: EntityManager): Promise<void> {
     if (ids.length === 0) return;
+    // Membership is dropped below: remember which collections lose these products so their pages are revalidated.
+    const memberships = await manager.getRepository(CollectionProduct).find({ where: { productId: In(ids) }, select: { collectionId: true } });
+    this.catalogRevalidation.invalidate(manager, { productIds: ids, collectionIds: memberships.map((m) => m.collectionId) });
     await manager.getRepository(Product).update({ id: In(ids) }, { deletedAt: this.clock.now() });
     await manager
       .createQueryBuilder()
@@ -441,6 +448,7 @@ export class ProductsService {
           },
           manager,
         );
+        this.catalogRevalidation.invalidate(manager, { productIds: [productId] });
         return this.mapVariantToDto(saved);
       } catch (err: unknown) {
         if (this.isDuplicateKeyError(err) && input.sku) throw AppException.conflict("SKU_TAKEN", "This SKU is already in use");
@@ -551,6 +559,7 @@ export class ProductsService {
           { action: "product:variant:update", entityType: "Variant", entityId: variantId, diff },
           manager,
         );
+        this.catalogRevalidation.invalidate(manager, { productIds: [productId] });
       }
 
       const updated = await variantRepo.findOneOrFail({ where: { id: variantId } });
@@ -587,6 +596,7 @@ export class ProductsService {
         },
         manager,
       );
+      this.catalogRevalidation.invalidate(manager, { productIds: [productId] });
     });
   }
 
@@ -939,6 +949,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [savedProduct.id] });
       return (await this.findById(savedProduct.id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -978,6 +989,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [id] });
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -997,6 +1009,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [id] });
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -1125,6 +1138,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [id] });
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -1193,6 +1207,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [id] });
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -1271,6 +1286,7 @@ export class ProductsService {
       }
 
       await this.softDeleteProducts(toDelete, manager);
+      if (processed.length > 0) this.catalogRevalidation.invalidate(manager, { productIds: processed });
 
       return { action: input.action, processed, skipped };
     });

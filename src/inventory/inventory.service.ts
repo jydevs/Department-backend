@@ -9,6 +9,7 @@ import { AppException } from "../common/errors/app-exception";
 import { TransactionService } from "../database/transaction.service";
 import { AuditService } from "../audit/audit.service";
 import { Clock } from "../common/clock/clock";
+import { CatalogRevalidationService } from "../catalog/revalidation/catalog-revalidation.service";
 import { AdjustInventoryInput, InventoryQueryParams } from "./dto/inventory-level.dto";
 import { CreateLocationInput, UpdateLocationInput } from "./dto/location.dto";
 import { OffsetPage, toOffsetPage, CursorPage, toCursorPage, decodeCursor } from "../common/pagination/pagination";
@@ -52,6 +53,7 @@ export class InventoryService {
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
     private readonly clock: Clock,
+    private readonly catalogRevalidation: CatalogRevalidationService,
   ) {}
 
   /* ── Locations ─────────────────────────────────────────────── */
@@ -167,6 +169,8 @@ export class InventoryService {
           manager,
         );
 
+        // deactivating a location changes the available stock of every variant stocked there
+        this.catalogRevalidation.invalidate(manager);
         return this.mapLocationToDto(updated);
       });
     } catch (e) {
@@ -305,6 +309,7 @@ export class InventoryService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { variantIds: [input.variantId] });
       const product = await manager.getRepository(Product).findOne({
         where: { id: variant.productId },
         withDeleted: true,
@@ -506,6 +511,7 @@ export class InventoryService {
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_STOCK", "Not enough stock for some items", { items: short });
     }
+    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
     return tracked;
   }
 
@@ -547,6 +553,7 @@ export class InventoryService {
         items: short,
       });
     }
+    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
   }
 
   /** Commits using the CURRENT variant policy (legacy). Prefer `commitReserved` for orders. */
@@ -597,6 +604,7 @@ export class InventoryService {
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_RESERVED", "Insufficient reserved quantity", { items: short });
     }
+    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
   }
 
   /**
@@ -652,6 +660,7 @@ export class InventoryService {
       adjustment.actorId = null;
       await adjRepo.save(adjustment);
     }
+    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
   }
 
   /**

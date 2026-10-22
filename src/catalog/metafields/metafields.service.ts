@@ -7,6 +7,7 @@ import { Collection } from "../entities/collection.entity";
 import { AppException } from "../../common/errors/app-exception";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
+import { CatalogRevalidationService } from "../revalidation/catalog-revalidation.service";
 import { MetafieldInput, MetafieldOwnerType, MetafieldResponseDto } from "./dto/metafield.dto";
 
 @Injectable()
@@ -20,6 +21,7 @@ export class MetafieldsService {
     private readonly collectionRepository: Repository<Collection>,
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
+    private readonly catalogRevalidation: CatalogRevalidationService,
   ) {}
 
   async getMetafields(ownerType: MetafieldOwnerType, ownerId: string): Promise<MetafieldResponseDto[]> {
@@ -87,6 +89,7 @@ export class MetafieldsService {
         results.push(this.mapToDto(saved));
       }
 
+      this.invalidateOwner(manager, ownerType, ownerId);
       return results;
     });
   }
@@ -110,7 +113,12 @@ export class MetafieldsService {
         },
         manager,
       );
+      this.invalidateOwner(manager, ownerType, ownerId);
     });
+  }
+
+  private invalidateOwner(manager: EntityManager, ownerType: MetafieldOwnerType, ownerId: string): void {
+    this.catalogRevalidation.invalidate(manager, ownerType === "product" ? { productIds: [ownerId] } : { collectionIds: [ownerId] });
   }
 
   private validateMetafieldValue(type: string, value: string): void {

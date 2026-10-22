@@ -7,6 +7,7 @@ import { AppException } from "../../common/errors/app-exception";
 import { sanitizeRichText } from "../../common/html/sanitize";
 import { SqlParams } from "../../common/sql/sql-params";
 import { TransactionService } from "../../database/transaction.service";
+import { CatalogRevalidationService } from "../revalidation/catalog-revalidation.service";
 import { AuditService } from "../../audit/audit.service";
 import {
   CollectionCreateInput,
@@ -57,6 +58,7 @@ export class CollectionsService {
     private readonly dataSource: DataSource,
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
+    private readonly catalogRevalidation: CatalogRevalidationService,
   ) {}
 
   async create(input: CollectionCreateInput): Promise<CollectionDto> {
@@ -101,6 +103,7 @@ export class CollectionsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { collectionIds: [saved.id] });
       return this.mapToDto(saved, await this.loadImages([saved.imageMediaId], manager));
     });
   }
@@ -188,6 +191,9 @@ export class CollectionsService {
         );
       }
 
+      if (Object.keys(diff).length > 0) {
+        this.catalogRevalidation.invalidate(manager, { collectionIds: [id], collectionHandles: diff.handle ? [(diff.handle as { old: string }).old] : [] });
+      }
       const fresh = await collectionRepo.findOneOrFail({ where: { id } });
       return this.mapToDto(fresh, await this.loadImages([fresh.imageMediaId], manager));
     });
@@ -203,6 +209,7 @@ export class CollectionsService {
       }
 
       await collectionRepo.softRemove(collection);
+      this.catalogRevalidation.invalidate(manager, { collectionIds: [collection.id] });
 
       await this.auditService.record(
         {
@@ -303,6 +310,7 @@ export class CollectionsService {
       }
 
       const collectionProductRepo = manager.getRepository(CollectionProduct);
+      const previous = await collectionProductRepo.find({ where: { collectionId }, select: { productId: true } });
       await collectionProductRepo.delete({ collectionId });
       if (productIds.length > 0) {
         await collectionProductRepo.insert(
@@ -319,6 +327,8 @@ export class CollectionsService {
         },
         manager,
       );
+      // Both the products that joined and the ones that left change their collection-dependent pages.
+      this.catalogRevalidation.invalidate(manager, { collectionIds: [collectionId], productIds: [...productIds, ...previous.map((p) => p.productId)] });
     });
   }
 
