@@ -76,6 +76,23 @@ const storefrontProductSummarySchema = z.object({
   price: z.number(),
   image: storefrontImageSchema.nullable(),
   available: z.boolean(),
+  /** Lowest compare_at_price among active variants whose compare_at_price > price, or null. */
+  compareAtPrice: z.number().nullable(),
+  /** Second image by position, or null. */
+  hoverImage: storefrontImageSchema.nullable(),
+  tags: z.array(z.string()),
+  vendor: z.string().nullable(),
+  /** Compact list of ACTIVE variants (max 100) for quick-add UIs. */
+  variants: z.array(
+    z.object({
+      id: z.string().uuid(),
+      title: z.string(),
+      price: z.number(),
+      compareAtPrice: z.number().nullable(),
+      available: z.boolean(),
+      options: z.array(z.object({ name: z.string(), value: z.string() })),
+    }),
+  ),
 });
 
 export type StorefrontProductSummary = z.infer<typeof storefrontProductSummarySchema>;

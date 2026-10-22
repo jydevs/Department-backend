@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query, Header } from "@nestjs/common";
 import { StorefrontService } from "./storefront.service";
 import { Public } from "../../common/auth/decorators";
 import { HandleParamDto } from "../../common/params/params";
-import { CursorQueryDto, CursorPage } from "../../common/pagination/pagination";
+import { CursorPage } from "../../common/pagination/pagination";
 import { AppException } from "../../common/errors/app-exception";
 import {
   StorefrontProductSummary,
@@ -11,6 +11,7 @@ import {
   StorefrontCollectionDetails,
   StorefrontProductsQueryDto,
   StorefrontSearchQueryDto,
+  StorefrontCollectionQueryDto,
 } from "./dto";
 
 // @Header is applied only on success, so a 400/404 is never cached.
@@ -23,7 +24,7 @@ export class StorefrontController {
 
   @Get("products")
   @Header("Cache-Control", CACHE)
-  listProducts(@Query() query: StorefrontProductsQueryDto): Promise<CursorPage<StorefrontProductSummary>> {
+  listProducts(@Query() query: StorefrontProductsQueryDto): Promise<CursorPage<StorefrontProductSummary> & { total: number }> {
     return this.storefrontService.listProducts(query);
   }
 
@@ -47,8 +48,8 @@ export class StorefrontController {
   @Header("Cache-Control", CACHE)
   async getCollectionByHandle(
     @Param() { handle }: HandleParamDto,
-    @Query() query: CursorQueryDto,
-  ): Promise<{ collection: StorefrontCollectionDetails; products: CursorPage<StorefrontProductSummary> }> {
+    @Query() query: StorefrontCollectionQueryDto,
+  ): Promise<{ collection: StorefrontCollectionDetails; products: CursorPage<StorefrontProductSummary> & { total: number } }> {
     const result = await this.storefrontService.getCollectionPage(handle, query);
     if (!result) {
       throw AppException.notFound("Collection");
