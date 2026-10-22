@@ -40,9 +40,48 @@ const SITE_NAME = "Daregular Dept.";
 const TAGLINE = "Uniforms for the unnoticed.";
 const LEDE = "Este proyecto es el primer lanzamiento oficial de Disruptive Dept, una marca que no diseña ropa, sino mensajes.";
 
+// ── campos editables añadidos después del primer lanzamiento ─────────────────
+// Tienen el mismo valor que la tienda mostraba fijo en el código; ensureEditableDefaults() los añade
+// a las bases ya sembradas cuando faltan (ver ensure-editable-defaults.ts).
+
+/** settings/site: logotipo dibujado, favicon y textura de grano. */
+export const BRAND_EXTRA = { logoText: "Dept", faviconMediaUrl: "/favicon.svg" };
+export const THEME_EXTRA = { grain: true };
+
+/** Textos de las tarjetas de producto (product-grid y campaign). */
+export const PRODUCT_CARD_LABELS = {
+  soldOutBadgeLabel: "Agotado",
+  saleBadgeLabel: "Oferta",
+  noPriceLabel: "Precio no disponible",
+  quickAddLabel: "Añadir rápido",
+};
+
+/** Botón «Ver más» de la colección paginada (product-grid). */
+export const LOAD_MORE_LABELS = {
+  loadMoreLabel: "Ver más",
+  loadingMoreLabel: "Cargando...",
+  loadMoreErrorLabel: "No se pudo cargar. Inténtalo de nuevo.",
+};
+
+/** Totales, aviso de producto no disponible y caja de descuento del carrito (cart-drawer). */
+export const CART_EXTRA_LABELS = {
+  unavailableMessage: "Ya no está disponible. Elimínalo para continuar.",
+  discountLabel: "Descuento",
+  shippingLabel: "Envío",
+  shippingText: "Se calcula al pagar",
+  taxLabel: "IVA",
+  totalLabel: "Total estimado",
+  taxIncludedNote: "Precios con IVA incluido. El envío se suma al elegir tu dirección.",
+  discountCodeLabel: "Código de descuento",
+  discountApplyLabel: "Aplicar",
+  discountApplyingLabel: "Aplicando…",
+  discountRemoveLabel: "Quitar",
+  discountEmptyMessage: "Escribe tu código de descuento.",
+};
+
 // ── settings/site ────────────────────────────────────────────────────────────
 const siteSettings = {
-  brand: { name: SITE_NAME, tagline: TAGLINE, description: LEDE },
+  brand: { name: SITE_NAME, tagline: TAGLINE, description: LEDE, ...BRAND_EXTRA },
   theme: {
     colors: {
       background: "#000000",
@@ -60,6 +99,7 @@ const siteSettings = {
     },
     fonts: { heading: "Anton", body: "Inter", condensed: "Oswald", script: "Pinyon Script" },
     colorScheme: "dark",
+    ...THEME_EXTRA,
   },
   seo: {
     titleTemplate: "%s — Daregular Dept.",
@@ -249,6 +289,7 @@ const homeTemplate = {
       ctaHref: "/collections/all",
       ctaVariant: "outline",
       alignment: "left",
+      ...PRODUCT_CARD_LABELS,
     }),
     section("home-editorial", "editorial", {
       eyebrow: "03 — Manifiesto",
@@ -321,8 +362,8 @@ const collectionTemplate = {
       countLabel: "artículos",
       emptyTitle: "Sin resultados",
       emptyText: "Prueba con otro filtro",
-      soldOutBadgeLabel: "Agotado",
-      saleBadgeLabel: "Oferta",
+      ...PRODUCT_CARD_LABELS,
+      ...LOAD_MORE_LABELS,
     }),
   ],
 };
@@ -355,6 +396,7 @@ const productTemplate = {
       showFilters: false,
       emptyTitle: "Sin resultados",
       emptyText: "Prueba con otro filtro",
+      ...PRODUCT_CARD_LABELS,
     }),
   ],
 };
@@ -402,6 +444,7 @@ const cartTemplate = {
       removeLabel: "Eliminar",
       decreaseLabel: "Quitar una unidad",
       increaseLabel: "Añadir una unidad",
+      ...CART_EXTRA_LABELS,
     }),
   ],
 };

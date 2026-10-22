@@ -15,6 +15,10 @@ export const settingsSchema = z
         /** Short brand statement (footer, about blocks). */
         description: z.string().max(500).optional(),
         logoMediaUrl: safeImageUrl.optional(),
+        /** Text of the drawn script wordmark used while there is no logo image (default "Dept"). */
+        logoText: z.string().min(1).max(20).optional(),
+        /** Browser-tab icon (PNG, SVG or ICO). Without it the storefront serves its built-in /favicon.svg. */
+        faviconMediaUrl: safeImageUrl.optional(),
       })
       .strict(),
     theme: z
@@ -48,6 +52,8 @@ export const settingsSchema = z
           })
           .strict(),
         colorScheme: z.enum(["dark", "light"]).optional(),
+        /** Decorative film-grain texture painted over the whole storefront (default on). */
+        grain: z.boolean().optional(),
       })
       .strict(),
     seo: z
