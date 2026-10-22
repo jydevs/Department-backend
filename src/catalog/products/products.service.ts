@@ -8,6 +8,7 @@ import { AppException } from "../../common/errors/app-exception";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
 import { Clock } from "../../common/clock/clock";
+import { CatalogRevalidationService } from "../revalidation/catalog-revalidation.service";
 import { escapeLike } from "../../common/sql/escape-like";
 import {
   ProductCreateInput,
@@ -16,6 +17,7 @@ import {
   VariantUpdateInput,
   ProductDetailResponseDto,
   ProductListItemResponseDto,
+  ProductFacetsResponseDto,
   VariantResponseDto,
   OptionsUpdateInput,
   MediaUpdateInput,
@@ -47,6 +49,7 @@ export interface BulkActionResult {
 
 const MAX_VARIANTS = 100;
 const HANDLE_ATTEMPTS = 5;
+const FACET_LIMIT = 500;
 
 @Injectable()
 export class ProductsService {
@@ -56,6 +59,7 @@ export class ProductsService {
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
     private readonly clock: Clock,
+    private readonly catalogRevalidation: CatalogRevalidationService,
   ) {}
 
   /* ───────────── create ───────────── */
@@ -73,6 +77,7 @@ export class ProductsService {
       }
     }
     for (const v of input.variants ?? []) this.assertPrices(v.price, v.compareAtPrice);
+    this.validateVariantOptionValues(input);
     const skus = (input.variants ?? []).map((v) => v.sku).filter((s): s is string => !!s);
     this.assertUnique(skus, "Duplicate SKUs in variants", "SKU_TAKEN");
 
@@ -117,9 +122,10 @@ export class ProductsService {
       }
 
       if (input.variants && input.variants.length > 0) {
-        await this.createVariantsWithSkuCheck(input.variants, savedProduct.id, manager);
+        const variants = input.variants.map((v) => ({ ...v, optionValueIds: this.resolveOptionValueIds(v.optionValues, optionsList) ?? v.optionValueIds }));
+        await this.createVariantsWithSkuCheck(variants, savedProduct.id, manager);
       } else if (optionsList.length > 0) {
-        await this.generateCartesianVariants(optionsList, savedProduct.id, manager);
+        await this.generateCartesianVariants(optionsList, savedProduct.id, manager, input.defaultVariantPrice ?? 0);
       }
 
       await this.auditService.record(
@@ -132,6 +138,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [savedProduct.id] });
       return (await this.findById(savedProduct.id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -180,6 +187,26 @@ export class ProductsService {
     }
 
     return this.mapToDetailDto(product, optionsWithValues, variants, mediaList);
+  }
+
+  /** Distinct tags / vendors / product types of non-deleted products (max FACET_LIMIT each, sorted). */
+  async facets(): Promise<ProductFacetsResponseDto> {
+    const manager = this.productRepository.manager;
+    const [tags, vendors, productTypes] = await Promise.all([
+      manager.query<{ v: string }[]>(
+        `SELECT DISTINCT t AS v FROM products p, unnest(p.tags) AS t WHERE p.deleted_at IS NULL ORDER BY v LIMIT $1`,
+        [FACET_LIMIT],
+      ),
+      manager.query<{ v: string }[]>(
+        `SELECT DISTINCT vendor AS v FROM products WHERE deleted_at IS NULL AND vendor IS NOT NULL AND vendor <> '' ORDER BY v LIMIT $1`,
+        [FACET_LIMIT],
+      ),
+      manager.query<{ v: string }[]>(
+        `SELECT DISTINCT product_type AS v FROM products WHERE deleted_at IS NULL AND product_type IS NOT NULL AND product_type <> '' ORDER BY v LIMIT $1`,
+        [FACET_LIMIT],
+      ),
+    ]);
+    return { tags: tags.map((r) => r.v), vendors: vendors.map((r) => r.v), productTypes: productTypes.map((r) => r.v) };
   }
 
   async list(
@@ -341,6 +368,7 @@ export class ProductsService {
         if (!affected) throw AppException.conflict("CONCURRENT_UPDATE", "The product was modified concurrently");
 
         await this.auditService.record({ action: "product:update", entityType: "Product", entityId: id, diff }, manager);
+        this.catalogRevalidation.invalidate(manager, { productIds: [id], productHandles: set.handle ? [product.handle] : [] });
       }
 
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
@@ -364,6 +392,9 @@ export class ProductsService {
   /** Soft delete + release SKUs + deactivate variants + drop collection membership, all on the caller's transaction. */
   private async softDeleteProducts(ids: string[], manager: EntityManager): Promise<void> {
     if (ids.length === 0) return;
+    // Membership is dropped below: remember which collections lose these products so their pages are revalidated.
+    const memberships = await manager.getRepository(CollectionProduct).find({ where: { productId: In(ids) }, select: { collectionId: true } });
+    this.catalogRevalidation.invalidate(manager, { productIds: ids, collectionIds: memberships.map((m) => m.collectionId) });
     await manager.getRepository(Product).update({ id: In(ids) }, { deletedAt: this.clock.now() });
     await manager
       .createQueryBuilder()
@@ -417,6 +448,7 @@ export class ProductsService {
           },
           manager,
         );
+        this.catalogRevalidation.invalidate(manager, { productIds: [productId] });
         return this.mapVariantToDto(saved);
       } catch (err: unknown) {
         if (this.isDuplicateKeyError(err) && input.sku) throw AppException.conflict("SKU_TAKEN", "This SKU is already in use");
@@ -527,6 +559,7 @@ export class ProductsService {
           { action: "product:variant:update", entityType: "Variant", entityId: variantId, diff },
           manager,
         );
+        this.catalogRevalidation.invalidate(manager, { productIds: [productId] });
       }
 
       const updated = await variantRepo.findOneOrFail({ where: { id: variantId } });
@@ -563,6 +596,7 @@ export class ProductsService {
         },
         manager,
       );
+      this.catalogRevalidation.invalidate(manager, { productIds: [productId] });
     });
   }
 
@@ -650,6 +684,51 @@ export class ProductsService {
     }
   }
 
+  /** Value names are matched like the duplicate check (trim + case-insensitive). */
+  private optionValueKey(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  /** Pre-transaction validation of `variants[].optionValues`: arity, existing names and no repeated combination. */
+  private validateVariantOptionValues(input: ProductCreateInput): void {
+    const combos = new Set<string>();
+    for (const [idx, variant] of (input.variants ?? []).entries()) {
+      const names = variant.optionValues;
+      if (names === undefined) continue;
+      const options = input.options ?? [];
+      if (options.length === 0) {
+        throw AppException.badRequest("BAD_REQUEST", `variants[${idx}].optionValues requires options in the request`);
+      }
+      if (variant.optionValueIds.length > 0) {
+        throw AppException.badRequest("BAD_REQUEST", `variants[${idx}]: send either optionValues or optionValueIds, not both`);
+      }
+      if (names.length !== options.length) {
+        throw AppException.badRequest("BAD_REQUEST", `variants[${idx}].optionValues must have ${options.length} value(s), one per option and in the same order`);
+      }
+      names.forEach((name, i) => {
+        const known = options[i].values.some((v) => this.optionValueKey(v.value) === this.optionValueKey(name));
+        if (!known) {
+          throw AppException.badRequest("BAD_REQUEST", `variants[${idx}]: "${name}" is not a value of option "${options[i].name}"`);
+        }
+      });
+      const combo = JSON.stringify(names.map((n) => this.optionValueKey(n)));
+      if (combos.has(combo)) {
+        throw AppException.badRequest("BAD_REQUEST", `Duplicate variant combination: ${names.join(" / ")}`);
+      }
+      combos.add(combo);
+    }
+  }
+
+  /** Names -> ids of the option values created in this transaction (null when the variant sent no names). */
+  private resolveOptionValueIds(names: string[] | undefined, options: OptionWithValues[]): string[] | null {
+    if (names === undefined) return null;
+    return names.map((name, i) => {
+      const found = options[i]?.values.find((v) => this.optionValueKey(v.value) === this.optionValueKey(name));
+      if (!found) throw AppException.badRequest("BAD_REQUEST", `"${name}" is not a value of option #${i + 1}`);
+      return found.id;
+    });
+  }
+
   private async createVariantsWithSkuCheck(variants: VariantCreateInput[], productId: string, manager: EntityManager): Promise<Variant[]> {
     const variantRepo = manager.getRepository(Variant);
     const result: Variant[] = [];
@@ -681,7 +760,7 @@ export class ProductsService {
     return result;
   }
 
-  private async generateCartesianVariants(options: OptionWithValues[], productId: string, manager: EntityManager): Promise<Variant[]> {
+  private async generateCartesianVariants(options: OptionWithValues[], productId: string, manager: EntityManager, price: number): Promise<Variant[]> {
     const variantRepo = manager.getRepository(Variant);
 
     // Size is computed from lengths BEFORE materialising anything.
@@ -700,7 +779,7 @@ export class ProductsService {
       variant.productId = productId;
       variant.sku = null;
       variant.title = combinations[i].map((valueId) => labelById.get(valueId) ?? "").join(" / ");
-      variant.price = 0;
+      variant.price = price;
       variant.position = i;
       variant.optionValueIds = combinations[i];
       variant.isActive = true;
@@ -769,6 +848,7 @@ export class ProductsService {
         allowBackorder: v.allowBackorder,
         optionValueIds: v.optionValueIds,
         isActive: v.isActive,
+        version: v.version,
       })),
       media: media.map((m) => ({ id: m.id, url: m.url, alt: m.alt ?? null, width: m.width ?? null, height: m.height ?? null, mimeType: m.mimeType ?? null })),
       createdAt: product.createdAt,
@@ -869,6 +949,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [savedProduct.id] });
       return (await this.findById(savedProduct.id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -908,6 +989,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [id] });
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -927,6 +1009,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [id] });
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -1055,6 +1138,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [id] });
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -1123,6 +1207,7 @@ export class ProductsService {
         manager,
       );
 
+      this.catalogRevalidation.invalidate(manager, { productIds: [id] });
       return (await this.findById(id, manager)) as ProductDetailResponseDto;
     });
   }
@@ -1201,6 +1286,7 @@ export class ProductsService {
       }
 
       await this.softDeleteProducts(toDelete, manager);
+      if (processed.length > 0) this.catalogRevalidation.invalidate(manager, { productIds: processed });
 
       return { action: input.action, processed, skipped };
     });

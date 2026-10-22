@@ -33,6 +33,8 @@ const contactSchema = z.strictObject({
   name: plain(120),
   email: z.email().max(255).transform((v) => v.toLowerCase()),
   subject: plain(200).optional(),
+  /** 7-20 digits, optional leading +. */
+  phone: z.preprocess((v) => (v === "" ? undefined : v), z.string().regex(/^[+]?[0-9]{7,20}$/, "Invalid phone number").optional()),
   message: plain(4000, true),
   /** honeypot: real users never see it */
   website: z.string().max(500).optional(),
@@ -65,6 +67,7 @@ export interface ContactMessageResponse {
   name: string;
   email: string;
   subject: string | null;
+  phone: string | null;
   message: string;
   status: string;
   ip: string | null;

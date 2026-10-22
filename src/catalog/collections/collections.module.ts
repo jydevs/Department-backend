@@ -4,6 +4,7 @@ import { Collection, CollectionProduct, Product, Variant } from "../../catalog/e
 import { CollectionsService } from "./collections.service";
 import { CollectionsController } from "./collections.controller";
 import { AuditModule } from "../../audit/audit.module";
+import { CatalogRevalidationModule } from "../revalidation/catalog-revalidation.module";
 import { DatabaseModule } from "../../database/database.module";
 
 @Module({
@@ -11,6 +12,7 @@ import { DatabaseModule } from "../../database/database.module";
     TypeOrmModule.forFeature([Collection, CollectionProduct, Product, Variant]),
     AuditModule,
     DatabaseModule,
+    CatalogRevalidationModule,
   ],
   providers: [CollectionsService],
   controllers: [CollectionsController],

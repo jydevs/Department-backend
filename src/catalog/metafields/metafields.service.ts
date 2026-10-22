@@ -7,6 +7,7 @@ import { Collection } from "../entities/collection.entity";
 import { AppException } from "../../common/errors/app-exception";
 import { TransactionService } from "../../database/transaction.service";
 import { AuditService } from "../../audit/audit.service";
+import { CatalogRevalidationService } from "../revalidation/catalog-revalidation.service";
 import { MetafieldInput, MetafieldOwnerType, MetafieldResponseDto } from "./dto/metafield.dto";
 
 @Injectable()
@@ -20,6 +21,7 @@ export class MetafieldsService {
     private readonly collectionRepository: Repository<Collection>,
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
+    private readonly catalogRevalidation: CatalogRevalidationService,
   ) {}
 
   async getMetafields(ownerType: MetafieldOwnerType, ownerId: string): Promise<MetafieldResponseDto[]> {
@@ -87,8 +89,36 @@ export class MetafieldsService {
         results.push(this.mapToDto(saved));
       }
 
+      this.invalidateOwner(manager, ownerType, ownerId);
       return results;
     });
+  }
+
+  async deleteMetafield(ownerType: MetafieldOwnerType, ownerId: string, namespace: string, key: string): Promise<void> {
+    await this.transactionService.run(async (manager) => {
+      await this.verifyOwnerExists(ownerType, ownerId, manager);
+
+      const metaRepo = manager.getRepository(Metafield);
+      const existing = await metaRepo.findOne({ where: { ownerType, ownerId, namespace, key } });
+      if (!existing) throw AppException.notFound("Metafield");
+
+      await metaRepo.delete({ id: existing.id });
+
+      await this.auditService.record(
+        {
+          action: "metafield:delete",
+          entityType: "Metafield",
+          entityId: existing.id,
+          diff: { ownerType, ownerId, namespace, key, type: existing.type, value: existing.value },
+        },
+        manager,
+      );
+      this.invalidateOwner(manager, ownerType, ownerId);
+    });
+  }
+
+  private invalidateOwner(manager: EntityManager, ownerType: MetafieldOwnerType, ownerId: string): void {
+    this.catalogRevalidation.invalidate(manager, ownerType === "product" ? { productIds: [ownerId] } : { collectionIds: [ownerId] });
   }
 
   private validateMetafieldValue(type: string, value: string): void {

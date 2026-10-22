@@ -24,6 +24,7 @@ import {
   StorefrontCollectionSummary,
   StorefrontCollectionDetails,
   StorefrontSearchQuery,
+  StorefrontCollectionQuery,
 } from "./dto";
 import { z } from "zod";
 
@@ -62,6 +63,7 @@ interface PageQuery {
   cursor?: string;
   tag?: string;
   q?: string;
+  available?: boolean;
   collection?: Collection;
 }
 
@@ -69,7 +71,18 @@ interface ProductIdPage {
   ids: string[];
   hasMore: boolean;
   nextCursor: string | null;
+  total: number;
 }
+
+/** Same rule as getAvailabilityMap, evaluated per product for the `available` filter. */
+const PRODUCT_AVAILABLE_SQL = `EXISTS (
+  SELECT 1 FROM variants av WHERE av.product_id = p.id AND av.is_active = true AND (
+    NOT av.track_inventory OR av.allow_backorder OR COALESCE((
+      SELECT SUM(il.on_hand - il.reserved) FROM inventory_levels il
+      JOIN locations l ON l.id = il.location_id AND l.is_active = true WHERE il.variant_id = av.id
+    ), 0) > 0))`;
+
+const MAX_SUMMARY_VARIANTS = 100;
 
 @Injectable()
 export class StorefrontService {
@@ -93,12 +106,12 @@ export class StorefrontService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async listProducts(query: StorefrontProductsQuery): Promise<CursorPage<StorefrontProductSummary>> {
+  async listProducts(query: StorefrontProductsQuery): Promise<CursorPage<StorefrontProductSummary> & { total: number }> {
     const limit = query.limit ?? 24;
     let collection: Collection | undefined;
     if (query.collection) {
       const found = await this.findPublishedCollection(query.collection);
-      if (!found) return { items: [], hasMore: false, nextCursor: null };
+      if (!found) return { items: [], hasMore: false, nextCursor: null, total: 0 };
       collection = found;
     }
 
@@ -108,9 +121,10 @@ export class StorefrontService {
       cursor: query.cursor,
       tag: query.tag,
       q: query.q,
+      available: query.available,
       collection,
     });
-    return { items: await this.loadSummaries(page.ids), hasMore: page.hasMore, nextCursor: page.nextCursor };
+    return { items: await this.loadSummaries(page.ids), hasMore: page.hasMore, nextCursor: page.nextCursor, total: page.total };
   }
 
   async getProductByHandle(handle: string): Promise<StorefrontProductDetails | null> {
@@ -237,8 +251,8 @@ export class StorefrontService {
   /** Collection + first page of its products, or null when it is missing/unpublished/deleted. */
   async getCollectionPage(
     handle: string,
-    query: { limit?: number; cursor?: string },
-  ): Promise<{ collection: StorefrontCollectionDetails; products: CursorPage<StorefrontProductSummary> } | null> {
+    query: Partial<StorefrontCollectionQuery>,
+  ): Promise<{ collection: StorefrontCollectionDetails; products: CursorPage<StorefrontProductSummary> & { total: number } } | null> {
     const collection = await this.findPublishedCollection(handle);
     if (!collection) return null;
 
@@ -266,10 +280,10 @@ export class StorefrontService {
       sort = "newest";
     }
 
-    const page = await this.queryProductIds({ sort, limit: query.limit ?? 24, cursor: query.cursor, collection });
+    const page = await this.queryProductIds({ sort, limit: query.limit ?? 24, cursor: query.cursor, available: query.available, collection });
     return {
       collection: details,
-      products: { items: await this.loadSummaries(page.ids), hasMore: page.hasMore, nextCursor: page.nextCursor },
+      products: { items: await this.loadSummaries(page.ids), hasMore: page.hasMore, nextCursor: page.nextCursor, total: page.total },
     };
   }
 
@@ -296,10 +310,8 @@ export class StorefrontService {
     return this.collectionRepository.findOne({ where: { handle, isPublished: true, deletedAt: IsNull() } });
   }
 
-  /** Step (a): ordered ids only, keyset-paginated with a parameterised query (limit + 1 to detect more). */
-  private async queryProductIds(q: PageQuery): Promise<ProductIdPage> {
-    const spec = SORTS[q.sort];
-    const params = new SqlParams();
+  /** WHERE / JOIN fragments shared by the page query and the COUNT (everything except the cursor). */
+  private buildFilters(q: PageQuery, params: SqlParams): { joins: string[]; where: string[] } {
     const joins: string[] = [];
     const where: string[] = ["p.status = 'active'", "p.deleted_at IS NULL"];
 
@@ -320,6 +332,17 @@ export class StorefrontService {
         `(p.title ILIKE ${ph} OR p.handle ILIKE ${ph} OR EXISTS (SELECT 1 FROM variants sv WHERE sv.product_id = p.id AND sv.is_active = true AND sv.sku ILIKE ${ph}))`,
       );
     }
+    if (q.available !== undefined) {
+      where.push(q.available ? PRODUCT_AVAILABLE_SQL : `NOT ${PRODUCT_AVAILABLE_SQL}`);
+    }
+    return { joins, where };
+  }
+
+  /** Step (a): ordered ids only, keyset-paginated with a parameterised query (limit + 1 to detect more). */
+  private async queryProductIds(q: PageQuery): Promise<ProductIdPage> {
+    const spec = SORTS[q.sort];
+    const params = new SqlParams();
+    const { joins, where } = this.buildFilters(q, params);
 
     if (q.cursor) {
       const cursor = decodeCursor(q.cursor, productCursorSchema);
@@ -348,7 +371,15 @@ export class StorefrontService {
       ORDER BY ${spec.expr} ${spec.dir}, p.id ASC
       LIMIT ${limitPh}`;
 
-    const rows: IdRow[] = await this.dataSource.query(sql, params.values);
+    // Total of the filtered set (without the cursor): a parallel COUNT with its own parameters.
+    const countParams = new SqlParams();
+    const countFilters = this.buildFilters(q, countParams);
+    const countSql = `SELECT COUNT(*)::int AS n FROM products p ${countFilters.joins.join(" ")} WHERE ${countFilters.where.join(" AND ")}`;
+
+    const [rows, countRows]: [IdRow[], { n: number }[]] = await Promise.all([
+      this.dataSource.query(sql, params.values),
+      this.dataSource.query(countSql, countParams.values),
+    ]);
     const hasMore = rows.length > q.limit;
     const pageRows = hasMore ? rows.slice(0, q.limit) : rows;
     const last = pageRows[pageRows.length - 1];
@@ -361,10 +392,10 @@ export class StorefrontService {
       else k = String(last.k);
       nextCursor = encodeCursor({ k, id: last.id });
     }
-    return { ids: pageRows.map((r) => r.id), hasMore, nextCursor };
+    return { ids: pageRows.map((r) => r.id), hasMore, nextCursor, total: countRows[0]?.n ?? 0 };
   }
 
-  /** Step (c): load the page's products with variants + first media, keep the SQL order. */
+  /** Step (c): load the page's products with variants, options and images in batch queries (no N+1), keep the SQL order. */
   private async loadSummaries(ids: string[]): Promise<StorefrontProductSummary[]> {
     if (ids.length === 0) return [];
 
@@ -376,14 +407,20 @@ export class StorefrontService {
       relations: { media: true },
       order: { position: "ASC", id: "ASC" },
     });
-    const imageByProduct = new Map<string, StorefrontImage>();
+    const imagesByProduct = new Map<string, StorefrontImage[]>();
     for (const pm of media) {
-      if (pm.media && !imageByProduct.has(pm.productId)) {
-        imageByProduct.set(pm.productId, this.toImage(pm.media));
-      }
+      if (!pm.media) continue;
+      const list = imagesByProduct.get(pm.productId) ?? [];
+      if (list.length < 2) list.push(this.toImage(pm.media));
+      imagesByProduct.set(pm.productId, list);
     }
 
-    const activeVariants = (p: Product) => (p.variants ?? []).filter((v) => v.isActive);
+    const options = await this.optionRepository.find({ where: { productId: In(ids) } });
+    const optionValues = options.length > 0 ? await this.optionValueRepository.find({ where: { optionId: In(options.map((o) => o.id)) } }) : [];
+    const optionNameById = new Map(options.map((o) => [o.id, o.name]));
+    const optionValueById = new Map(optionValues.map((ov) => [ov.id, { name: optionNameById.get(ov.optionId) ?? "", value: ov.value }]));
+
+    const activeVariants = (p: Product) => (p.variants ?? []).filter((v) => v.isActive).sort((a, b) => a.position - b.position);
     const availability = await this.getAvailabilityMap(products.flatMap((p) => activeVariants(p).map((v) => v.id)));
 
     const summaries: StorefrontProductSummary[] = [];
@@ -391,13 +428,27 @@ export class StorefrontService {
       const p = byId.get(id);
       if (!p) continue;
       const variants = activeVariants(p);
+      const discounted = variants.filter((v) => v.compareAtPrice != null && v.compareAtPrice > v.price).map((v) => v.compareAtPrice as number);
+      const images = imagesByProduct.get(p.id) ?? [];
       summaries.push({
         id: p.id,
         handle: p.handle,
         title: p.title,
         price: variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : 0,
-        image: imageByProduct.get(p.id) ?? null,
+        image: images[0] ?? null,
         available: variants.some((v) => availability.get(v.id) === true),
+        compareAtPrice: discounted.length > 0 ? Math.min(...discounted) : null,
+        hoverImage: images[1] ?? null,
+        tags: p.tags ?? [],
+        vendor: p.vendor ?? null,
+        variants: variants.slice(0, MAX_SUMMARY_VARIANTS).map((v) => ({
+          id: v.id,
+          title: v.title,
+          price: v.price,
+          compareAtPrice: v.compareAtPrice ?? null,
+          available: availability.get(v.id) === true,
+          options: (v.optionValueIds ?? []).map((ovId) => optionValueById.get(ovId)).filter((o): o is { name: string; value: string } => !!o),
+        })),
       });
     }
     return summaries;

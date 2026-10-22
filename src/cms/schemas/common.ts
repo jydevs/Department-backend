@@ -8,7 +8,20 @@ function hasControlOrSpace(v: string): boolean {
   return false;
 }
 
-export function isSafeUrl(value: string, opts: { allowMailTel: boolean }): boolean {
+const LOCAL_HTTP = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?(?:[/?#]|$)/;
+
+/** `http://localhost|127.0.0.1|[::1]` with an optional port (development uploads). No userinfo, no other hosts. */
+function isLocalHttpUrl(value: string): boolean {
+  if (!LOCAL_HTTP.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" && url.username === "" && url.password === "" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isSafeUrl(value: string, opts: { allowMailTel: boolean; allowLocalHttp?: boolean }): boolean {
   if (value.length === 0 || value.length > 2000 || hasControlOrSpace(value)) return false;
   if (value.startsWith("/")) return !value.startsWith("//") && !value.includes("\\");
   if (value.startsWith("https://")) {
@@ -18,12 +31,17 @@ export function isSafeUrl(value: string, opts: { allowMailTel: boolean }): boole
       return false;
     }
   }
+  if (opts.allowLocalHttp && isLocalHttpUrl(value)) return true;
   if (opts.allowMailTel) return /^mailto:[^\s@]+@[^\s@]+$/.test(value) || /^tel:\+?[0-9()\-.]{3,30}$/.test(value);
   return false;
 }
 
-/** Image/media URL: `https://...` or `/path` (no leading `//`). */
-export const safeImageUrl = z.string().refine((v) => isSafeUrl(v, { allowMailTel: false }), {
+/**
+ * Image/media URL: `https://...` or `/path` (no leading `//`). Outside production it also accepts
+ * `http://localhost`, `http://127.0.0.1` and `http://[::1]` (optional port) so images uploaded in development validate.
+ * NODE_ENV is read at validation time, never cached.
+ */
+export const safeImageUrl = z.string().refine((v) => isSafeUrl(v, { allowMailTel: false, allowLocalHttp: process.env.NODE_ENV !== "production" }), {
   message: "URL inválida: use https:// o /ruta (sin // inicial)",
 });
 

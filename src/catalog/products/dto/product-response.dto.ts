@@ -29,6 +29,8 @@ export const variantForResponseSchema = z.object({
   allowBackorder: z.boolean(),
   optionValueIds: z.array(z.string().uuid()),
   isActive: z.boolean(),
+  /** Optimistic-lock token required by PATCH /admin/products/:id/variants/:variantId. */
+  version: z.number().int(),
 });
 
 export type VariantForResponse = z.infer<typeof variantForResponseSchema>;
@@ -71,3 +73,12 @@ export const productListItemResponseSchema = z.object({
 
 export type ProductListItemResponse = z.infer<typeof productListItemResponseSchema>;
 export class ProductListItemResponseDto extends createZodDto(productListItemResponseSchema) {}
+
+export const productFacetsResponseSchema = z.object({
+  tags: z.array(z.string()),
+  vendors: z.array(z.string()),
+  productTypes: z.array(z.string()),
+});
+
+export type ProductFacetsResponse = z.infer<typeof productFacetsResponseSchema>;
+export class ProductFacetsResponseDto extends createZodDto(productFacetsResponseSchema) {}

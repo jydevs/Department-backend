@@ -4,10 +4,12 @@ import { Repository, EntityManager, In, Not, QueryFailedError } from "typeorm";
 import { v7 as uuidv7 } from "uuid";
 import { Location, InventoryLevel, InventoryAdjustment } from "./entities";
 import { Variant } from "../catalog/entities/variant.entity";
+import { Product } from "../catalog/entities/product.entity";
 import { AppException } from "../common/errors/app-exception";
 import { TransactionService } from "../database/transaction.service";
 import { AuditService } from "../audit/audit.service";
 import { Clock } from "../common/clock/clock";
+import { CatalogRevalidationService } from "../catalog/revalidation/catalog-revalidation.service";
 import { AdjustInventoryInput, InventoryQueryParams } from "./dto/inventory-level.dto";
 import { CreateLocationInput, UpdateLocationInput } from "./dto/location.dto";
 import { OffsetPage, toOffsetPage, CursorPage, toCursorPage, decodeCursor } from "../common/pagination/pagination";
@@ -21,6 +23,21 @@ import { affectedCount } from "../common/sql/query-result";
 export const UNLIMITED_AVAILABILITY = 1_000_000_000;
 const MAX_ON_HAND = 1_000_000_000;
 const LOW_STOCK_DEFAULT = 5;
+
+interface AdjustmentRow {
+  id: string;
+  variant_id: string;
+  location_id: string;
+  delta: number;
+  reason: string;
+  note: string | null;
+  actor_id: string | null;
+  created_at: Date;
+  variant_title: string | null;
+  product_id: string | null;
+  product_title: string | null;
+  product_handle: string | null;
+}
 
 @Injectable()
 export class InventoryService {
@@ -36,6 +53,7 @@ export class InventoryService {
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
     private readonly clock: Clock,
+    private readonly catalogRevalidation: CatalogRevalidationService,
   ) {}
 
   /* ── Locations ─────────────────────────────────────────────── */
@@ -151,6 +169,8 @@ export class InventoryService {
           manager,
         );
 
+        // deactivating a location changes the available stock of every variant stocked there
+        this.catalogRevalidation.invalidate(manager);
         return this.mapLocationToDto(updated);
       });
     } catch (e) {
@@ -289,7 +309,13 @@ export class InventoryService {
         manager,
       );
 
-      return this.mapAdjustmentToDto(saved, variant);
+      this.catalogRevalidation.invalidate(manager, { variantIds: [input.variantId] });
+      const product = await manager.getRepository(Product).findOne({
+        where: { id: variant.productId },
+        withDeleted: true,
+        select: { id: true, title: true, handle: true },
+      });
+      return this.mapAdjustmentToDto(saved, variant, product ?? undefined);
     });
   }
 
@@ -300,6 +326,8 @@ export class InventoryService {
     const query = this.inventoryLevelRepository
       .createQueryBuilder("level")
       .leftJoinAndSelect("level.variant", "variant")
+      .leftJoin("variant.product", "product")
+      .addSelect(["product.id", "product.title", "product.handle"])
       .leftJoinAndSelect("level.location", "location")
       .where("variant.isActive = true");
 
@@ -333,29 +361,50 @@ export class InventoryService {
   }
 
   async listAdjustments(limit: number, cursor?: string, variantId?: string): Promise<CursorPage<InventoryAdjustmentDto>> {
-    const query = this.adjustmentRepository.createQueryBuilder("adj");
+    const params: unknown[] = [];
+    const conditions: string[] = [];
 
-    if (variantId) query.where("adj.variantId = :variantId", { variantId });
-
+    if (variantId) {
+      params.push(variantId);
+      conditions.push(`a.variant_id = $${params.length}::uuid`);
+    }
     if (cursor) {
       const cursorData = decodeCursor(cursor, z.object({ c: z.string().datetime(), id: z.string().uuid() }));
-      query.andWhere("(adj.createdAt, adj.id) < (:createdAt, :id)", { createdAt: cursorData.c, id: cursorData.id });
+      params.push(cursorData.c, cursorData.id);
+      conditions.push(`(a.created_at, a.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`);
     }
+    params.push(limit + 1);
 
-    const rows = await query
-      .orderBy("adj.createdAt", "DESC")
-      .addOrderBy("adj.id", "DESC")
-      .take(limit + 1)
-      .getMany();
-
-    const variantIds = [...new Set(rows.map((r) => r.variantId))];
-    const variants = new Map<string, Variant>();
-    if (variantIds.length > 0) {
-      for (const v of await this.variantRepository.find({ where: { id: In(variantIds) } })) variants.set(v.id, v);
-    }
+    // One JOIN query (variant + product, soft-deleted products included): no per-row lookups.
+    const rows = await this.adjustmentRepository.manager.query<AdjustmentRow[]>(
+      `SELECT a.id, a.variant_id, a.location_id, a.delta, a.reason, a.note, a.actor_id, a.created_at,
+              v.title AS variant_title, p.id AS product_id, p.title AS product_title, p.handle AS product_handle
+         FROM inventory_adjustments a
+         LEFT JOIN variants v ON v.id = a.variant_id
+         LEFT JOIN products p ON p.id = v.product_id
+        ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT $${params.length}`,
+      params,
+    );
 
     return toCursorPage(
-      rows.map((r) => this.mapAdjustmentToDto(r, variants.get(r.variantId))),
+      rows.map(
+        (r): InventoryAdjustmentDto => ({
+          id: r.id,
+          variantId: r.variant_id,
+          variantTitle: r.variant_title ?? null,
+          productId: r.product_id ?? null,
+          productTitle: r.product_title ?? null,
+          productHandle: r.product_handle ?? null,
+          locationId: r.location_id,
+          delta: r.delta,
+          reason: r.reason,
+          note: r.note ?? null,
+          actorId: r.actor_id ?? null,
+          createdAt: r.created_at,
+        }),
+      ),
       limit,
       (last) => ({ c: last.createdAt.toISOString(), id: last.id }),
     );
@@ -462,6 +511,7 @@ export class InventoryService {
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_STOCK", "Not enough stock for some items", { items: short });
     }
+    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
     return tracked;
   }
 
@@ -503,6 +553,7 @@ export class InventoryService {
         items: short,
       });
     }
+    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
   }
 
   /** Commits using the CURRENT variant policy (legacy). Prefer `commitReserved` for orders. */
@@ -553,6 +604,7 @@ export class InventoryService {
     if (short.length > 0) {
       throw AppException.conflict("INSUFFICIENT_RESERVED", "Insufficient reserved quantity", { items: short });
     }
+    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
   }
 
   /**
@@ -608,6 +660,7 @@ export class InventoryService {
       adjustment.actorId = null;
       await adjRepo.save(adjustment);
     }
+    this.catalogRevalidation.invalidate(manager, { variantIds: tracked.map((i) => i.variantId) });
   }
 
   /**
@@ -664,6 +717,9 @@ export class InventoryService {
       variantId: level.variantId,
       variantTitle: level.variant?.title ?? "",
       variantSku: level.variant?.sku ?? null,
+      productId: level.variant?.product?.id ?? null,
+      productTitle: level.variant?.product?.title ?? null,
+      productHandle: level.variant?.product?.handle ?? null,
       locationId: level.locationId,
       locationName: level.location?.name ?? "",
       onHand: level.onHand,
@@ -674,11 +730,18 @@ export class InventoryService {
     };
   }
 
-  private mapAdjustmentToDto(adjustment: InventoryAdjustment, variant: Variant | undefined): InventoryAdjustmentDto {
+  private mapAdjustmentToDto(
+    adjustment: InventoryAdjustment,
+    variant: Variant | undefined,
+    product?: Pick<Product, "id" | "title" | "handle">,
+  ): InventoryAdjustmentDto {
     return {
       id: adjustment.id,
       variantId: adjustment.variantId,
       variantTitle: variant?.title ?? null,
+      productId: product?.id ?? null,
+      productTitle: product?.title ?? null,
+      productHandle: product?.handle ?? null,
       locationId: adjustment.locationId,
       delta: adjustment.delta,
       reason: adjustment.reason,

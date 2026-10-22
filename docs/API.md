@@ -118,6 +118,7 @@ En desarrollo, con `MOCK_PAYMENTS_ENABLED=true` y `PAYMENT_PROVIDER=mock`, `POST
 3. En modo borrador, el front pide `GET /storefront/content/{settings|menus/:key|templates/:key|pages/:key}?preview=<token>` (sin `Cache-Control` público). `/storefront/content/bundle` **no** admite `preview`.
 
 ### Revalidación (saliente: la API llama al front)
+Además del contenido, tras el COMMIT de cualquier cambio de catálogo (productos, variantes, opciones, medios, metafields, colecciones y sus productos, ajustes/reservas/commit/restock de inventario y cambios de ubicaciones) la API envía `catalog`, `catalog:product:<handle>` y `catalog:collection:<handle>` (agrupadas y sin duplicados por transacción; las colecciones manuales que contienen el producto también se avisan; sin `STOREFRONT_REVALIDATE_SECRET` no hace nada). Los handles cumplen `[a-z0-9-]+`.
 Tras publicar/programar/restaurar contenido, la API hace `POST {STOREFRONT_URL}/api/revalidate` (2 intentos, timeout 3 s, nunca bloquea la publicación). **El front debe implementar esa ruta**:
 
 - Cuerpo JSON (texto exacto): `{ "tags": ["…"], "ts": 1712345678901 }` (`ts` en ms epoch, va dentro del cuerpo firmado).
@@ -198,17 +199,28 @@ Tabla generada del código (`@Controller`/`@Get`/`@Post`…); ante duda manda `/
 ### Catálogo (admin)
 | Método | Ruta | Permiso |
 | --- | --- | --- |
-| GET | `/admin/products` · `/admin/products/:id` · `/admin/products/:id/metafields` | A:products:read |
+| GET | `/admin/products` · `/admin/products/facets` · `/admin/products/:id` · `/admin/products/:id/metafields` | A:products:read |
 | POST | `/admin/products` · `/bulk` · `/:id/duplicate` · `/:id/publish` · `/:id/archive` · `/:id/variants` | A:products:write |
 | PATCH · DELETE | `/admin/products/:id` · `/admin/products/:id/variants/:variantId` | A:products:write |
 | PUT | `/admin/products/:id/options` · `/:id/media` · `/:id/metafields` | A:products:write |
-| GET | `/admin/collections` · `/:id` · `/:id/metafields` | A:collections:read |
+| DELETE | `/admin/products/:id/metafields/:namespace/:key` (404 si no existe; auditado) | A:products:write |
+| GET | `/admin/collections` · `/:id` · `/:id/products` · `/:id/metafields` | A:collections:read |
 | POST | `/admin/collections` · `/admin/collections/preview-rules` | A:collections:write |
 | PATCH · DELETE | `/admin/collections/:id` | A:collections:write |
 | PUT | `/admin/collections/:id/products` · `/:id/metafields` | A:collections:write |
+| DELETE | `/admin/collections/:id/metafields/:namespace/:key` (404 si no existe; auditado) | A:collections:write |
 | GET | `/admin/inventory` · `/admin/inventory/adjustments` · `/admin/locations` · `/admin/locations/:id` | A:inventory:read |
 | POST | `/admin/inventory/adjust` · `/admin/locations` | A:inventory:write |
 | PATCH · DELETE | `/admin/locations/:id` | A:inventory:write |
+
+#### Ampliaciones del panel (catálogo e inventario)
+- **Variantes**: cada variante de `GET /admin/products/:id` y de las respuestas de crear/actualizar incluye `version` (la exige `PATCH /admin/products/:id/variants/:variantId`).
+- **Inventario**: los items de `GET /admin/inventory` y `GET /admin/inventory/adjustments` (y la respuesta de `POST /admin/inventory/adjust`) añaden `productId`, `productTitle`, `productHandle` (anulables), resueltos con JOIN.
+- **Colecciones**: `CollectionDto` añade `image: { url, alt, width, height } | null` (resuelta desde `imageMediaId`) y `version`. `PATCH /admin/collections/:id` acepta `version` opcional: si difiere de la guardada → 409 `CONCURRENT_UPDATE`. `GET /admin/collections/:id/products` → `{ items: [{ id, handle, title, status, position, image, minPrice }], total }` en orden, con borradores y archivados; colección smart → 409 `COLLECTION_NOT_MANUAL`.
+- **Facetas**: `GET /admin/products/facets` → `{ tags, vendors, productTypes }` (distintos de productos no borrados, máx. 500 cada uno, ordenados).
+- **Crear producto**: el cuerpo admite `defaultVariantPrice` (entero COP ≥ 0, se aplica a las variantes generadas desde `options`) y, en `variants[]`, `optionValues: string[]` (nombres de valor en el orden de `options`; se enlazan a los ids creados en la misma transacción; combinación repetida o valor inexistente → 400; no combinar con `optionValueIds`).
+- **Pedidos**: `POST /admin/orders/:id/mark-paid` con una `reference` ya usada por otro pago → 409 `PAYMENT_REFERENCE_DUPLICATE`.
+- **Imágenes (contenido)**: fuera de `production`, `safeImageUrl` acepta además `http://localhost`, `http://127.0.0.1` y `http://[::1]` con puerto opcional; en producción sigue exigiendo `https://` o `/ruta`.
 
 ### Catálogo (tienda)
 | Método | Ruta | Auth |
@@ -216,6 +228,10 @@ Tabla generada del código (`@Controller`/`@Get`/`@Post`…); ante duda manda `/
 | GET | `/storefront/products` · `/storefront/products/:handle` | — |
 | GET | `/storefront/collections` · `/storefront/collections/:handle` | — |
 | GET | `/storefront/search` | — |
+
+Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `GET /storefront/collections/:handle` (`products.items`) y `GET /storefront/search`:
+`compareAtPrice` (mínimo `compare_at_price` de variantes activas con precio comparado > precio, o `null`), `hoverImage` (segunda imagen por posición o `null`), `tags`, `vendor` y `variants: [{ id, title, price, compareAtPrice, available, options: [{ name, value }] }]` (solo activas, máx. 100). Se calculan con consultas en lote (sin N+1).
+`total` (productos que cumplen el filtro, sin contar el cursor) llega en `GET /storefront/products` y en `products.total` de la colección. Filtro `available=true|false` en ambos (producto disponible = alguna variante disponible con la regla de `available`). El `Cache-Control` público no cambia.
 
 ### Contenido / CMS
 | Método | Ruta | Permiso |
@@ -279,7 +295,7 @@ Tabla generada del código (`@Controller`/`@Get`/`@Post`…); ante duda manda `/
 | GET | `/admin/newsletter/export` | A:marketing:write |
 | POST | `/admin/newsletter/:id/unsubscribe` · `/admin/email-templates/:key/preview` · `/:key/test-send` | A:marketing:write |
 | PUT | `/admin/email-templates/:key` | A:marketing:write |
-| POST | `/storefront/newsletter` · `/storefront/newsletter/unsubscribe` · `/storefront/contact` | — |
+| POST | `/storefront/newsletter` · `/storefront/newsletter/unsubscribe` · `/storefront/contact` (acepta `phone` opcional: 7–20 dígitos, `+` inicial opcional; 400 si está mal formado; se devuelve en `GET /admin/contact-messages`) | — |
 | GET | `/storefront/newsletter/confirm` · `/storefront/newsletter/unsubscribe` | — |
 
 ### Analítica y mantenimiento

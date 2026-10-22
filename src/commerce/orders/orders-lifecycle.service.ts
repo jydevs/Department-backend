@@ -73,7 +73,16 @@ export class OrdersLifecycleService {
     if (payment.providerTransactionId) row.providerTransactionId = payment.providerTransactionId;
     if (payment.method) row.method = payment.method;
     else if (payment.manual && !row.method) row.method = "manual";
-    await paymentRepo.save(row);
+    try {
+      await paymentRepo.save(row);
+    } catch (err) {
+      // Unique index (provider, provider_transaction_id): the manual reference was already used by another payment.
+      // The failed statement aborts this transaction; the exception makes the caller roll it back.
+      if (payment.manual && payment.providerTransactionId && (err as { driverError?: { code?: string } })?.driverError?.code === "23505") {
+        throw AppException.conflict("PAYMENT_REFERENCE_DUPLICATE", "That payment reference is already registered on another payment; use a different reference");
+      }
+      throw err;
+    }
 
     order.status = "open";
     order.paymentStatus = "paid";

@@ -1,18 +1,20 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, In, QueryFailedError, Repository } from "typeorm";
+import { DataSource, EntityManager, In, QueryFailedError, Repository } from "typeorm";
 import { v7 as uuidv7 } from "uuid";
 import { Collection, CollectionProduct, Product } from "../../catalog/entities";
 import { AppException } from "../../common/errors/app-exception";
 import { sanitizeRichText } from "../../common/html/sanitize";
 import { SqlParams } from "../../common/sql/sql-params";
 import { TransactionService } from "../../database/transaction.service";
+import { CatalogRevalidationService } from "../revalidation/catalog-revalidation.service";
 import { AuditService } from "../../audit/audit.service";
 import {
   CollectionCreateInput,
   CollectionUpdateInput,
   CollectionProductsUpdateInput,
   CollectionDto,
+  CollectionProductsResponseDto,
   PreviewRulesInput,
   PreviewRulesResponseDto,
 } from "./dto";
@@ -33,6 +35,21 @@ interface PreviewRow {
   height: number | null;
 }
 
+type CollectionImage = NonNullable<CollectionDto["image"]>;
+
+interface ProductRow {
+  id: string;
+  handle: string;
+  title: string;
+  status: string;
+  position: number;
+  min_price: string | null;
+  url: string | null;
+  alt: string | null;
+  width: number | null;
+  height: number | null;
+}
+
 @Injectable()
 export class CollectionsService {
   constructor(
@@ -41,6 +58,7 @@ export class CollectionsService {
     private readonly dataSource: DataSource,
     private readonly transactionService: TransactionService,
     private readonly auditService: AuditService,
+    private readonly catalogRevalidation: CatalogRevalidationService,
   ) {}
 
   async create(input: CollectionCreateInput): Promise<CollectionDto> {
@@ -85,7 +103,8 @@ export class CollectionsService {
         manager,
       );
 
-      return this.mapToDto(saved);
+      this.catalogRevalidation.invalidate(manager, { collectionIds: [saved.id] });
+      return this.mapToDto(saved, await this.loadImages([saved.imageMediaId], manager));
     });
   }
 
@@ -93,9 +112,13 @@ export class CollectionsService {
     return this.transactionService.run(async (manager) => {
       const collectionRepo = manager.getRepository(Collection);
 
-      const collection = await collectionRepo.findOne({ where: { id } });
+      // Row lock: the version check below and the save are one atomic step for concurrent PATCHes.
+      const collection = await collectionRepo.findOne({ where: { id }, lock: { mode: "pessimistic_write" } });
       if (!collection) {
         throw AppException.notFound("Collection");
+      }
+      if (input.version !== undefined && input.version !== collection.version) {
+        throw AppException.conflict("CONCURRENT_UPDATE", "The collection was modified concurrently");
       }
 
       // Check for duplicate handle if changed
@@ -168,7 +191,11 @@ export class CollectionsService {
         );
       }
 
-      return this.mapToDto(updated);
+      if (Object.keys(diff).length > 0) {
+        this.catalogRevalidation.invalidate(manager, { collectionIds: [id], collectionHandles: diff.handle ? [(diff.handle as { old: string }).old] : [] });
+      }
+      const fresh = await collectionRepo.findOneOrFail({ where: { id } });
+      return this.mapToDto(fresh, await this.loadImages([fresh.imageMediaId], manager));
     });
   }
 
@@ -182,6 +209,7 @@ export class CollectionsService {
       }
 
       await collectionRepo.softRemove(collection);
+      this.catalogRevalidation.invalidate(manager, { collectionIds: [collection.id] });
 
       await this.auditService.record(
         {
@@ -196,12 +224,12 @@ export class CollectionsService {
 
   async findById(id: string): Promise<CollectionDto | null> {
     const collection = await this.collectionRepository.findOne({ where: { id } });
-    return collection ? this.mapToDto(collection) : null;
+    return collection ? this.mapToDto(collection, await this.loadImages([collection.imageMediaId])) : null;
   }
 
   async findByHandle(handle: string): Promise<CollectionDto | null> {
     const collection = await this.collectionRepository.findOne({ where: { handle } });
-    return collection ? this.mapToDto(collection) : null;
+    return collection ? this.mapToDto(collection, await this.loadImages([collection.imageMediaId])) : null;
   }
 
   async list(page: number, pageSize: number): Promise<{ items: CollectionDto[]; total: number }> {
@@ -211,9 +239,50 @@ export class CollectionsService {
       order: { createdAt: "DESC" },
     });
 
+    const images = await this.loadImages(items.map((c) => c.imageMediaId));
     return {
-      items: items.map((c) => this.mapToDto(c)),
+      items: items.map((c) => this.mapToDto(c, images)),
       total,
+    };
+  }
+
+  /** Members of a manual collection in position order. Drafts and archived products are included (admin view). */
+  async listProducts(collectionId: string): Promise<CollectionProductsResponseDto> {
+    const collection = await this.collectionRepository.findOne({ where: { id: collectionId }, select: { id: true, type: true } });
+    if (!collection) throw AppException.notFound("Collection");
+    if (collection.type !== "manual") {
+      throw AppException.conflict("COLLECTION_NOT_MANUAL", "Only manual collections have an explicit product list");
+    }
+
+    const rows: ProductRow[] = await this.dataSource.query(
+      `SELECT p.id, p.handle, p.title, p.status, cp.position, pr.min_price, m.url, m.alt, m.width, m.height
+         FROM collection_products cp
+         JOIN products p ON p.id = cp.product_id AND p.deleted_at IS NULL
+         LEFT JOIN LATERAL (
+           SELECT MIN(v.price) AS min_price FROM variants v WHERE v.product_id = p.id AND v.is_active = true
+         ) pr ON true
+         LEFT JOIN LATERAL (
+           SELECT md.url, md.alt, md.width, md.height
+             FROM product_media pm JOIN media md ON md.id = pm.media_id
+            WHERE pm.product_id = p.id
+            ORDER BY pm.position ASC, pm.id ASC LIMIT 1
+         ) m ON true
+        WHERE cp.collection_id = $1::uuid
+        ORDER BY cp.position ASC, cp.id ASC`,
+      [collectionId],
+    );
+
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        handle: r.handle,
+        title: r.title,
+        status: r.status as "draft" | "active" | "archived",
+        position: Number(r.position),
+        image: r.url ? { url: r.url, alt: r.alt ?? null, width: r.width ?? null, height: r.height ?? null } : null,
+        minPrice: r.min_price === null ? null : Number(r.min_price),
+      })),
+      total: rows.length,
     };
   }
 
@@ -241,6 +310,7 @@ export class CollectionsService {
       }
 
       const collectionProductRepo = manager.getRepository(CollectionProduct);
+      const previous = await collectionProductRepo.find({ where: { collectionId }, select: { productId: true } });
       await collectionProductRepo.delete({ collectionId });
       if (productIds.length > 0) {
         await collectionProductRepo.insert(
@@ -257,6 +327,8 @@ export class CollectionsService {
         },
         manager,
       );
+      // Both the products that joined and the ones that left change their collection-dependent pages.
+      this.catalogRevalidation.invalidate(manager, { collectionIds: [collectionId], productIds: [...productIds, ...previous.map((p) => p.productId)] });
     });
   }
 
@@ -302,7 +374,19 @@ export class CollectionsService {
     };
   }
 
-  private mapToDto(collection: Collection): CollectionDto {
+  /** One query for all the images of a page of collections (JOIN-free batch lookup, no N+1). */
+  private async loadImages(mediaIds: Array<string | null | undefined>, manager?: EntityManager): Promise<Map<string, CollectionImage>> {
+    const ids = [...new Set(mediaIds.filter((id): id is string => !!id))];
+    const result = new Map<string, CollectionImage>();
+    if (ids.length === 0) return result;
+    const rows: Array<{ id: string; url: string; alt: string | null; width: number | null; height: number | null }> = await (
+      manager ?? this.dataSource.manager
+    ).query("SELECT id, url, alt, width, height FROM media WHERE id = ANY($1::uuid[])", [ids]);
+    for (const r of rows) result.set(r.id, { url: r.url, alt: r.alt ?? null, width: r.width ?? null, height: r.height ?? null });
+    return result;
+  }
+
+  private mapToDto(collection: Collection, images: Map<string, CollectionImage>): CollectionDto {
     return {
       id: collection.id,
       handle: collection.handle,
@@ -315,8 +399,10 @@ export class CollectionsService {
       seoTitle: collection.seoTitle ?? null,
       seoDescription: collection.seoDescription ?? null,
       imageMediaId: collection.imageMediaId ?? null,
+      image: (collection.imageMediaId ? images.get(collection.imageMediaId) : undefined) ?? null,
       createdAt: collection.createdAt,
       updatedAt: collection.updatedAt,
+      version: collection.version,
     };
   }
 
