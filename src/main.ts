@@ -24,6 +24,10 @@ async function bootstrap() {
   app.useLogger(logger);
   app.enableShutdownHooks();
 
+  if (env.NODE_ENV === "production" && !env.REQUIRE_STAFF_2FA) {
+    logger.warn("REQUIRE_STAFF_2FA=false in production: owners/admins can operate the panel WITHOUT two-factor authentication. Leave it unset (default true) unless this is deliberate.");
+  }
+
   if (env.TRUST_PROXY !== false) app.set("trust proxy", env.TRUST_PROXY);
   app.useBodyParser("json", { limit: "1mb" });
   app.use(requestContextMiddleware);

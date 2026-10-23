@@ -155,6 +155,7 @@ const schema = z
     }
     if (env.AUTH_THROTTLE_LIMIT !== undefined && env.AUTH_THROTTLE_LIMIT !== 5) issue("AUTH_THROTTLE_LIMIT", "must be unset (or 5) in production");
     if (env.DOCS_ENABLED === "true" || env.DOCS_ENABLED === "1") issue("DOCS_ENABLED", "must not be enabled in production (it publishes the whole admin API surface); leave it unset");
+    if (!env.OWNER_MUST_CHANGE_PASSWORD) issue("OWNER_MUST_CHANGE_PASSWORD", "must stay true in production (the bootstrap owner has to replace the temporary password); false is only for CI/smoke");
     if (env.MOCK_PAYMENTS_ENABLED) issue("MOCK_PAYMENTS_ENABLED", "must be false in production");
     if (env.MAIL_TRANSPORT !== "smtp") issue("MAIL_TRANSPORT", "must be smtp in production");
     if (!env.SMTP_URL) issue("SMTP_URL", "is required in production");
