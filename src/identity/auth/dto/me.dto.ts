@@ -7,6 +7,8 @@ export const meResponseSchema = z.object({
   role: z.string(),
   permissions: z.array(z.string()),
   totpEnabled: z.boolean(),
+  mustChangePassword: z.boolean(),
+  twoFactorSetupRequired: z.boolean(),
 });
 
 export type MeResponse = z.infer<typeof meResponseSchema>;

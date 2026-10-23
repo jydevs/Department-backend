@@ -19,6 +19,10 @@ export const loginResponseSchema = z.object({
     fullName: z.string(),
     role: z.string(),
   }),
+  /** true: the session may only change the password (everything else answers 403 PASSWORD_CHANGE_REQUIRED) */
+  mustChangePassword: z.boolean(),
+  /** true: 2FA is mandatory for this role and not enrolled yet (everything else answers 403 TWO_FACTOR_SETUP_REQUIRED) */
+  twoFactorSetupRequired: z.boolean(),
 });
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>;

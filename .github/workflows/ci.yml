@@ -30,6 +30,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/department
       OWNER_EMAIL: owner@ci.test
       OWNER_PASSWORD: ci-Correct-Horse-Battery-9
+      OWNER_MUST_CHANGE_PASSWORD: "false"
       # the smoke pays orders through the mock provider; never enabled in production (env.ts enforces it)
       MOCK_PAYMENTS_ENABLED: "true"
       PAYMENT_PROVIDER: mock

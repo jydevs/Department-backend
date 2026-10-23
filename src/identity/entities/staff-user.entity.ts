@@ -47,9 +47,15 @@ export class StaffUser extends VersionedEntity {
   @Column({ type: "text", array: true, default: "{}" })
   recoveryCodesHash!: string[];
 
+  /** Temporary password (team invite / owner bootstrap): the session may only change the password until it does. */
+  @Column({ type: "boolean", default: false })
+  mustChangePassword!: boolean;
+
+  /** @deprecated login failures are counted per (account, IP) in login_attempts; kept for old data. */
   @Column({ type: "integer", default: 0 })
   failedLoginCount!: number;
 
+  /** @deprecated see failedLoginCount. */
   @Column({ type: "timestamptz", precision: 3, nullable: true })
   lockedUntil?: Date | null;
 

@@ -59,6 +59,7 @@ export class StaffService {
       staff.passwordHash = passwordHash;
       staff.roleId = input.roleId;
       staff.isActive = true;
+      staff.mustChangePassword = true; // temporary password: the member must choose their own at first login
 
       const savedStaff = await staffRepo.save(staff);
 

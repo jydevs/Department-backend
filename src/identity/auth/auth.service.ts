@@ -9,6 +9,7 @@ import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { AuditService } from "../../audit/audit.service";
 import { affectedCount } from "../../common/sql/query-result";
+import { clearLoginFailures, isLoginBlocked, recordLoginFailure, recordLoginSuccess } from "../../common/auth/login-attempts";
 import { TransactionService } from "../../database/transaction.service";
 import { RefreshToken, StaffUser } from "../entities";
 import { PasswordService } from "./password.service";
@@ -17,8 +18,6 @@ import { TOTPService } from "./totp.service";
 
 const RECOVERY_CODE_COUNT = 8;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const MAX_FAILED_LOGINS = 5;
-const LOCK_MS = 15 * 60 * 1000;
 /** A refresh token rotated this recently is presented again by a concurrent request (two tabs, a retry), not by a thief: no family revocation. */
 const REFRESH_GRACE_MS = 20_000;
 
@@ -58,17 +57,27 @@ export class AuthService implements OnModuleInit {
     email: string,
     password: string,
     totp?: string,
-  ): Promise<{ accessToken: string; expiresIn: number; refreshToken: string; user: { id: string; email: string; fullName: string; role: string } }> {
+    ip?: string,
+  ): Promise<{
+    accessToken: string;
+    expiresIn: number;
+    refreshToken: string;
+    user: { id: string; email: string; fullName: string; role: string };
+    mustChangePassword: boolean;
+    twoFactorSetupRequired: boolean;
+  }> {
     const now = this.clock.now();
     const user = await this.staffUserRepo.findOne({ where: { email: email.toLowerCase() }, relations: { role: true } });
 
     // always run argon2, even for unknown emails, so timing does not reveal which emails exist
     const passwordOk = await this.passwordService.verify(password, user?.passwordHash ?? this.dummyHash);
-    const locked = !!user?.lockedUntil && user.lockedUntil > now;
+    const clientIp = ip ?? RequestContextStore.get()?.ip;
+    // failures are counted per (account, IP): a stranger failing from elsewhere cannot lock the owner out of their usual IP
+    const locked = !!user && (await isLoginBlocked(this.dataSource, "staff", user.id, clientIp, now));
 
     if (!user || !passwordOk || !user.isActive || locked) {
-      // a locked account is not touched again: attackers must not be able to extend the lock forever
-      if (user && user.isActive && !locked) await this.recordFailedLogin(user.id, now);
+      // a blocked (account, IP) is not touched again: attackers must not be able to extend the lock forever
+      if (user && user.isActive && !locked) await this.recordFailedLogin(user.id, now, clientIp);
       else if (!user) await this.recordAudit({ action: "LOGIN_FAILED", entityType: "StaffUser" });
       throw AppException.unauthorized("Invalid credentials", "INVALID_CREDENTIALS");
     }
@@ -79,7 +88,7 @@ export class AuthService implements OnModuleInit {
         ? await this.verifyTotpOnce(user, totp)
         : await this.consumeRecoveryCode(user.id, totp);
       if (!ok) {
-        await this.recordFailedLogin(user.id, now);
+        await this.recordFailedLogin(user.id, now, clientIp);
         throw AppException.unauthorized("Invalid credentials", "INVALID_CREDENTIALS");
       }
     }
@@ -89,7 +98,8 @@ export class AuthService implements OnModuleInit {
 
     // reset counters, store the session and audit atomically
     await this.transactionService.run(async (manager) => {
-      await manager.update(StaffUser, { id: user.id }, { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now });
+      await manager.update(StaffUser, { id: user.id }, { lastLoginAt: now });
+      await recordLoginSuccess(manager, "staff", user.id, clientIp, now);
       await manager.insert(RefreshToken, {
         id: uuidv7(),
         staffUserId: user.id,
@@ -108,7 +118,15 @@ export class AuthService implements OnModuleInit {
       refreshToken,
       expiresIn: Math.floor(expiresIn / 1000),
       user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role!.key },
+      mustChangePassword: user.mustChangePassword,
+      twoFactorSetupRequired: this.twoFactorSetupRequired(user, user.role!.permissions),
     };
+  }
+
+  /** REQUIRE_STAFF_2FA: roles that manage staff or settings (owner/admin) must have 2FA on. */
+  twoFactorSetupRequired(user: { totpEnabled: boolean }, permissions: readonly string[]): boolean {
+    if (!this.env.REQUIRE_STAFF_2FA || user.totpEnabled) return false;
+    return permissions.includes("staff:write") || permissions.includes("settings:write");
   }
 
   /**
@@ -294,8 +312,10 @@ export class AuthService implements OnModuleInit {
       // Update password and increment version
       await manager.update(StaffUser, { id: staffUserId }, {
         passwordHash: newHash,
+        mustChangePassword: false,
         version: () => "version + 1", // increment optimistic lock
       });
+      await clearLoginFailures(manager, "staff", staffUserId);
 
       // Revoke all refresh tokens (force re-login on all devices)
       await manager.update(RefreshToken, { staffUserId }, { revokedAt: now });
@@ -314,7 +334,16 @@ export class AuthService implements OnModuleInit {
    */
   async getUserWithPermissions(
     staffUserId: string,
-  ): Promise<{ id: string; email: string; fullName: string; role: string; permissions: string[]; totpEnabled: boolean }> {
+  ): Promise<{
+    id: string;
+    email: string;
+    fullName: string;
+    role: string;
+    permissions: string[];
+    totpEnabled: boolean;
+    mustChangePassword: boolean;
+    twoFactorSetupRequired: boolean;
+  }> {
     const user = await this.staffUserRepo.findOne({
       where: { id: staffUserId },
       relations: { role: true },
@@ -331,6 +360,8 @@ export class AuthService implements OnModuleInit {
       role: user.role!.key,
       permissions: user.role!.permissions,
       totpEnabled: user.totpEnabled,
+      mustChangePassword: user.mustChangePassword,
+      twoFactorSetupRequired: this.twoFactorSetupRequired(user, user.role!.permissions),
     };
   }
 
@@ -360,18 +391,15 @@ export class AuthService implements OnModuleInit {
     return affectedCount(res) === 1;
   }
 
-  /** A failed re-authentication of a signed-in user (change password, disable 2FA) feeds the same lockout as login. */
+  /** A failed re-authentication of a signed-in user (change password, disable 2FA) feeds the same (account, IP) lockout as login. */
   private async recordFailedAuthenticated(user: StaffUser): Promise<void> {
     const now = this.clock.now();
-    if (user.isActive && !(user.lockedUntil && user.lockedUntil > now)) await this.recordFailedLogin(user.id, now);
+    const ip = RequestContextStore.get()?.ip;
+    if (user.isActive && !(await isLoginBlocked(this.dataSource, "staff", user.id, ip, now))) await this.recordFailedLogin(user.id, now, ip);
   }
 
-  private async recordFailedLogin(userId: string, now: Date): Promise<void> {
-    const next = "CASE WHEN locked_until IS NOT NULL AND locked_until <= $2 THEN 1 ELSE failed_login_count + 1 END";
-    await this.dataSource.query(
-      `UPDATE staff_users SET failed_login_count = ${next}, locked_until = CASE WHEN (${next}) >= ${MAX_FAILED_LOGINS} THEN $3::timestamptz ELSE NULL END WHERE id = $1`,
-      [userId, now, new Date(now.getTime() + LOCK_MS)],
-    );
+  private async recordFailedLogin(userId: string, now: Date, ip: string | undefined): Promise<void> {
+    await recordLoginFailure(this.dataSource, "staff", userId, ip, now);
     await this.recordAudit({ action: "LOGIN_FAILED", entityType: "StaffUser", entityId: userId });
   }
 

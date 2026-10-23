@@ -1,9 +1,10 @@
+import { visitorIp } from "../../common/throttle/storefront-throttler.guard";
 import { authThrottleLimit } from "../../common/throttle/auth-throttle";
 import { Body, Controller, Post, Get, Res, Req, Inject } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { Throttle } from "@nestjs/throttler";
 import { ApiOperation, ApiTags, ApiCookieAuth } from "@nestjs/swagger";
-import { CurrentActor, Public } from "../../common/auth/decorators";
+import { AllowWhilePending, CurrentActor, Public } from "../../common/auth/decorators";
 import type { Actor } from "../../common/auth/actor";
 import { AppException } from "../../common/errors/app-exception";
 import { ENV } from "../../config/config.module";
@@ -45,9 +46,10 @@ export class AuthController {
   @ApiOperation({ summary: "Login with email and password" })
   async login(
     @Body() dto: LoginRequestDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    const { refreshToken, ...result } = await this.authService.login(dto.email, dto.password, dto.totp);
+    const { refreshToken, ...result } = await this.authService.login(dto.email, dto.password, dto.totp, visitorIp(req, this.env.STOREFRONT_SERVER_KEY));
 
     // Set refresh token in httpOnly cookie
     res.cookie("dept_rt", refreshToken, {
@@ -104,6 +106,7 @@ export class AuthController {
    * Revoke all refresh tokens for the current user.
    */
   @Post("logout")
+  @AllowWhilePending("password", "2fa")
   @ApiOperation({ summary: "Logout and revoke all sessions" })
   async logout(@CurrentActor() actor: Actor, @Res({ passthrough: true }) res: Response): Promise<{ message: string }> {
     if (actor.kind !== "staff") {
@@ -121,6 +124,7 @@ export class AuthController {
    * Get current user info and permissions.
    */
   @Get("me")
+  @AllowWhilePending("password", "2fa")
   @ApiOperation({ summary: "Get current user info" })
   async me(@CurrentActor() actor: Actor): Promise<MeResponse> {
     if (actor.kind !== "staff") {
@@ -136,6 +140,8 @@ export class AuthController {
       role: user.role,
       permissions: user.permissions,
       totpEnabled: user.totpEnabled,
+      mustChangePassword: user.mustChangePassword,
+      twoFactorSetupRequired: user.twoFactorSetupRequired,
     };
   }
 
@@ -144,6 +150,7 @@ export class AuthController {
    * Initialize 2FA setup: return otpauth URI.
    */
   @Post("2fa/setup")
+  @AllowWhilePending("2fa")
   @ApiOperation({ summary: "Setup two-factor authentication" })
   async setupTwoFA(@CurrentActor() actor: Actor): Promise<SetupTwoFAResponse> {
     if (actor.kind !== "staff") {
@@ -160,6 +167,7 @@ export class AuthController {
    * Verify code and enable 2FA, return recovery codes.
    */
   @Post("2fa/enable")
+  @AllowWhilePending("2fa")
   @ApiOperation({ summary: "Enable two-factor authentication" })
   async enableTwoFA(
     @CurrentActor() actor: Actor,
@@ -202,6 +210,7 @@ export class AuthController {
    * Change password with current password verification.
    */
   @Post("change-password")
+  @AllowWhilePending("password", "2fa")
   @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
   @ApiOperation({ summary: "Change user password" })
   async changePassword(

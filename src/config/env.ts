@@ -113,9 +113,20 @@ const schema = z
       .default("true")
       .transform((v) => v === "true" || v === "1"),
 
+    /**
+     * Owners/admins (roles with staff:write or settings:write) must enrol 2FA before using the panel.
+     * Default: true in production, false elsewhere (so dev/CI/smokes work without an authenticator).
+     */
+    REQUIRE_STAFF_2FA: z.enum(["true", "false", "1", "0"]).optional(),
+
     /* ── bootstrap: owner creation ── */
     OWNER_EMAIL: z.string().email().optional(),
     OWNER_PASSWORD: z.string().optional(),
+    /** `yarn owner:create`: force a password change on first login (default true). Only turn it off for CI/smoke. */
+    OWNER_MUST_CHANGE_PASSWORD: z
+      .enum(["true", "false", "1", "0"])
+      .default("true")
+      .transform((v) => v === "true" || v === "1"),
   })
   .superRefine((env, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
@@ -168,7 +179,7 @@ const schema = z
     }
   });
 
-export type Env = Omit<z.infer<typeof schema>, "DOCS_ENABLED"> & { DOCS_ENABLED: boolean };
+export type Env = Omit<z.infer<typeof schema>, "DOCS_ENABLED" | "REQUIRE_STAFF_2FA"> & { DOCS_ENABLED: boolean; REQUIRE_STAFF_2FA: boolean };
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = schema.safeParse(source);
@@ -179,7 +190,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const data = parsed.data;
   const docs =
     data.DOCS_ENABLED === undefined ? data.NODE_ENV !== "production" : data.DOCS_ENABLED === "true" || data.DOCS_ENABLED === "1";
-  return { ...data, DOCS_ENABLED: docs };
+  const require2fa =
+    data.REQUIRE_STAFF_2FA === undefined ? data.NODE_ENV === "production" : data.REQUIRE_STAFF_2FA === "true" || data.REQUIRE_STAFF_2FA === "1";
+  return { ...data, DOCS_ENABLED: docs, REQUIRE_STAFF_2FA: require2fa };
 }
 
 /** Load `.env` into process.env. A missing file is fine; any other failure is real and must surface. */

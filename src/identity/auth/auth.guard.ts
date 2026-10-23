@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import type { Request } from "express";
-import { IS_PUBLIC } from "../../common/auth/decorators";
+import { ALLOW_PENDING, IS_PUBLIC, type PendingStep } from "../../common/auth/decorators";
 import type { Actor } from "../../common/auth/actor";
 import { RequestContextStore } from "../../common/context/request-context";
 import { AppException } from "../../common/errors/app-exception";
@@ -55,6 +55,17 @@ export class AuthGuard implements CanActivate {
       roles: [user.role],
       permissions: new Set(user.permissions),
     };
+
+    // Pending security steps: a temporary password must be replaced, and owners/admins must have 2FA (REQUIRE_STAFF_2FA).
+    // Only the routes marked @AllowWhilePending(...) stay reachable until the step is done.
+    const pending = (step: PendingStep) =>
+      this.reflector.getAllAndOverride<PendingStep[] | undefined>(ALLOW_PENDING, [context.getHandler(), context.getClass()])?.includes(step) ?? false;
+    if (user.mustChangePassword && !pending("password")) {
+      throw new AppException(403, "PASSWORD_CHANGE_REQUIRED", "You must change your temporary password before continuing");
+    }
+    if (user.twoFactorSetupRequired && !pending("2fa")) {
+      throw new AppException(403, "TWO_FACTOR_SETUP_REQUIRED", "Two-factor authentication must be enabled before continuing");
+    }
 
     req.actor = actor;
     RequestContextStore.setActor(actor);

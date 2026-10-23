@@ -62,6 +62,7 @@ async function main() {
     owner.passwordHash = passwordHash;
     owner.roleId = ownerRole.id;
     owner.isActive = true;
+    owner.mustChangePassword = env.OWNER_MUST_CHANGE_PASSWORD;
 
     await staffRepository.save(owner);
     console.log(`Owner created successfully with email: ${email}`);
