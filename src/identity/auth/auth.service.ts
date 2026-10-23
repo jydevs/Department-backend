@@ -295,11 +295,23 @@ export class AuthService implements OnModuleInit {
   }
 
   /**
-   * Change password: verify current password, update hash, revoke all refresh token families.
+   * Change password: verify current password, update hash, revoke all refresh token families and return a new session
+   * (same shape as login) so the signed-in panel keeps working without going back to the login screen.
    */
-  async changePassword(staffUserId: string, currentPassword: string, newPassword: string): Promise<void> {
-    const user = await this.staffUserRepo.findOneBy({ id: staffUserId });
-    if (!user) {
+  async changePassword(
+    staffUserId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{
+    accessToken: string;
+    expiresIn: number;
+    refreshToken: string;
+    user: { id: string; email: string; fullName: string; role: string };
+    mustChangePassword: false;
+    twoFactorSetupRequired: boolean;
+  }> {
+    const user = await this.staffUserRepo.findOne({ where: { id: staffUserId }, relations: { role: true } });
+    if (!user || !user.role) {
       throw AppException.notFound("User");
     }
 
@@ -317,6 +329,8 @@ export class AuthService implements OnModuleInit {
 
     const newHash = await this.passwordService.hash(newPassword);
     const now = this.clock.now();
+    const { token: refreshToken, hash: refreshHash } = this.tokenService.generateRefreshToken();
+    const context = RequestContextStore.get();
 
     await this.transactionService.run(async (manager) => {
       // Update password and increment version
@@ -327,8 +341,17 @@ export class AuthService implements OnModuleInit {
       });
       await clearLoginFailures(manager, "staff", staffUserId);
 
-      // Revoke all refresh tokens (force re-login on all devices)
+      // Revoke all refresh tokens (every OTHER device must log in again) and open a fresh session for this one
       await manager.update(RefreshToken, { staffUserId }, { revokedAt: now });
+      await manager.insert(RefreshToken, {
+        id: uuidv7(),
+        staffUserId,
+        familyId: randomUUID(),
+        tokenHash: refreshHash,
+        expiresAt: new Date(now.getTime() + REFRESH_TTL_MS),
+        userAgent: context?.userAgent ?? null,
+        ip: context?.ip ?? null,
+      });
 
       await this.recordAudit({
         action: "PASSWORD_CHANGED",
@@ -337,6 +360,16 @@ export class AuthService implements OnModuleInit {
         manager,
       });
     });
+
+    const { token: accessToken, expiresIn } = await this.tokenService.generateAccessToken({ sub: user.id, role: user.role.key });
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn: Math.floor(expiresIn / 1000),
+      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role.key },
+      mustChangePassword: false,
+      twoFactorSetupRequired: this.twoFactorSetupRequired(user, user.role.permissions),
+    };
   }
 
   /**

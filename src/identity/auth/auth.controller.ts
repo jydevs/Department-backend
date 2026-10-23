@@ -207,7 +207,8 @@ export class AuthController {
 
   /**
    * POST /auth/change-password
-   * Change password with current password verification.
+   * Change password with current password verification. Revokes every session and answers with a NEW one
+   * (accessToken in the body + dept_rt cookie, like login) with mustChangePassword=false.
    */
   @Post("change-password")
   @AllowWhilePending("password", "2fa")
@@ -216,14 +217,25 @@ export class AuthController {
   async changePassword(
     @CurrentActor() actor: Actor,
     @Body() dto: ChangePasswordRequestDto,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<ChangePasswordResponse> {
     if (actor.kind !== "staff") {
       throw AppException.unauthorized("Authentication required");
     }
 
-    await this.authService.changePassword(actor.staffId, dto.current, dto.new);
+    const { refreshToken, ...session } = await this.authService.changePassword(actor.staffId, dto.current, dto.new);
+    this.setRefreshCookie(res, refreshToken);
+    return session;
+  }
 
-    return { message: "Password changed successfully" };
+  private setRefreshCookie(res: Response, refreshToken: string): void {
+    res.cookie("dept_rt", refreshToken, {
+      httpOnly: true,
+      secure: this.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/api/v1/auth",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
   }
 
   /**

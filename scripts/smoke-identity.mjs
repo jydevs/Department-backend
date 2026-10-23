@@ -112,6 +112,16 @@ export async function identityChecks({ base, check, assert }) {
     const newPassword = `Smoke-${Date.now()}-Pass!`;
     const changed = await post("/auth/change-password", { current: temp, new: newPassword }, firstBody.accessToken);
     assert(changed.status < 300, `change-password → ${changed.status}`);
+    const changedBody = await changed.json();
+    const changedCookie = (changed.headers.get("set-cookie") ?? "").split(";")[0];
+    assert(
+      changedBody.accessToken && changedBody.expiresIn > 0 && changedBody.mustChangePassword === false && changedBody.twoFactorSetupRequired === false && changedBody.user?.email === email,
+      `change-password must return a new session: ${JSON.stringify(changedBody)}`,
+    );
+    assert(/^dept_rt=/.test(changedCookie) && /HttpOnly/i.test(changed.headers.get("set-cookie") ?? ""), "change-password must set the new dept_rt cookie");
+    assert((await get("/auth/me", changedBody.accessToken)).status === 200, "the returned access token must work");
+    assert((await post("/auth/refresh", {}, null, { cookie: changedCookie })).status < 300, "the returned refresh cookie must work");
+    assert((await post("/auth/refresh", {}, null, { cookie: (first.headers.get("set-cookie") ?? "").split(";")[0] })).status === 401, "the pre-change refresh token must be revoked");
     const login = await post("/auth/login", { email, password: newPassword });
     const loginBody = await login.json();
     assert(loginBody.mustChangePassword === false, "flag must clear after the change");
