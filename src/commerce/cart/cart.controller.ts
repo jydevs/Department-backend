@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { ApiHeader } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { AppException } from "../../common/errors/app-exception";
 import { Public } from "../../common/auth/decorators";
@@ -29,6 +30,7 @@ export class CartController {
   }
 
   @Get(":id")
+  @ApiHeader({ name: "X-Quote-Email", required: false, description: "Buyer e-mail for once-per-email discount validation (alternative to ?email=; never logged)" })
   get(
     @Param() { id }: CartParamDto,
     @CartToken() token: string,

@@ -18,7 +18,7 @@ esquemas es OpenAPI: `GET /docs-json` (Swagger UI en `/docs`, activo salvo en pr
 
 Local: `http://localhost:4000`. Todo el cuerpo es JSON (`Content-Type: application/json`, límite 1 MB); las subidas son `multipart/form-data`.
 CORS: solo los orígenes de `CORS_ORIGINS`, con `credentials: true`. Cabeceras permitidas desde el navegador:
-`Content-Type, Authorization, X-Request-Id, Idempotency-Key, If-Match, X-Cart-Token`. Expuestas: `X-Request-Id, Retry-After, ETag`.
+`Content-Type, Authorization, X-Request-Id, Idempotency-Key, If-Match, X-Cart-Token, X-Quote-Email`. Expuestas: `X-Request-Id, Retry-After, ETag`.
 
 ## 2. Autenticación
 
@@ -236,7 +236,7 @@ Tabla generada del código (`@Controller`/`@Get`/`@Post`…); ante duda manda `/
 | GET | `/storefront/search` | — |
 
 Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `GET /storefront/collections/:handle` (`products.items`) y `GET /storefront/search`:
-`compareAtPrice` (mínimo `compare_at_price` de variantes activas con precio comparado > precio, o `null`), `hoverImage` (segunda imagen por posición o `null`), `tags`, `vendor` y `variants: [{ id, title, price, compareAtPrice, available, options: [{ name, value }] }]` (solo activas, máx. 100). Se calculan con consultas en lote (sin N+1).
+`compareAtPrice` (mínimo `compare_at_price` de variantes activas con precio comparado > precio, o `null`), `hoverImage` (segunda imagen por posición o `null`), `tags`, `vendor`, `updatedAt` (ISO-8601, última modificación del producto) y `variants: [{ id, title, price, compareAtPrice, available, options: [{ name, value }] }]` (solo activas, máx. 100). Se calculan con consultas en lote (sin N+1).
 `total` (productos que cumplen el filtro, sin contar el cursor) llega en `GET /storefront/products` y en `products.total` de la colección. Filtro `available=true|false` en ambos (producto disponible = alguna variante disponible con la regla de `available`). El `Cache-Control` público no cambia.
 
 ### Contenido / CMS
@@ -270,7 +270,7 @@ Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `
 | POST | `/storefront/dev/mock-payment` (solo dev/CI) | — |
 
 #### Carrito y pedido público: campos añadidos (todos compatibles hacia atrás)
-- **`GET /storefront/carts/:id?shippingRateId=&department=&email=`** (X-Cart-Token): `shippingRateId` y `department` van **juntos** (uno solo → 400). Con ellos el `quote` incluye `shippingTotal`, `shippingRate { id, name }` y el IVA recalculado sobre subtotal − descuento + envío (envío gratis por umbral o por código `free_shipping` incluido). Tarifa inexistente/no disponible para el departamento → 422 `SHIPPING_RATE_INVALID`. Sin esos parámetros todo queda como antes (`shippingTotal: 0`). `email` (opcional) valida los códigos de un solo uso por email al cotizar. Las mutaciones (`POST/PATCH/DELETE …/lines`, `PUT …/discount`) siguen devolviendo el carrito sin envío.
+- **`GET /storefront/carts/:id?shippingRateId=&department=&email=`** (X-Cart-Token): `shippingRateId` y `department` van **juntos** (uno solo → 400). Con ellos el `quote` incluye `shippingTotal`, `shippingRate { id, name }` y el IVA recalculado sobre subtotal − descuento + envío (envío gratis por umbral o por código `free_shipping` incluido). Tarifa inexistente/no disponible para el departamento → 422 `SHIPPING_RATE_INVALID`. Sin esos parámetros todo queda como antes (`shippingTotal: 0`). `email` (opcional) valida los códigos de un solo uso por email al cotizar; también se acepta por la cabecera **`X-Quote-Email`** (para no poner el email en la URL; si vienen ambos gana el query; email mal formado en la cabecera → 400 `VALIDATION_ERROR`). El valor no se registra en los logs (cabecera redactada, la query string nunca se loguea). Las mutaciones (`POST/PATCH/DELETE …/lines`, `PUT …/discount`) siguen devolviendo el carrito sin envío.
 - **`quote`** (carrito y checkout) añade: `taxIncluded` (boolean: los precios ya incluyen IVA; `total` no suma `taxTotal`), `taxRatePercent` (number, p. ej. 19) y `taxBreakdown { label, ratePercent, netAmount, taxAmount }` (`netAmount` = base sin IVA; `taxAmount` = `taxTotal`). Cada línea añade `productHandle` (string | null).
 - **`CartResponse`** añade `converted` (boolean) y `convertedOrderNumber` (number | null). Un carrito ya pagado/convertido sigue respondiendo `GET` (con `converted: true`); las mutaciones siguen dando 409 `CART_CONVERTED`.
 - **`PUT /storefront/carts/:id/discount`** acepta `email` opcional junto a `code`: si el código es de un solo uso por email y ese email (sin distinguir mayúsculas) ya lo usó → 422 `DISCOUNT_INVALID` con `details.reason: "already_used"` antes de pagar. Sin `email` el comportamiento es el de siempre (se valida al pagar).
@@ -300,11 +300,13 @@ Ampliaciones (aditivas) del resumen de producto de `GET /storefront/products`, `
 | GET · PATCH | `/storefront/customers/me` | C |
 | POST | `/storefront/customers/me/change-password` · `/me/data-export` | C |
 | DELETE | `/storefront/customers/me` (Habeas Data: anonimiza) | C |
+| GET | `/storefront/customers/me/orders` · `/me/orders/:orderNumber` | C |
 | GET · POST | `/storefront/customers/me/addresses` | C |
 | PATCH · DELETE | `/storefront/customers/me/addresses/:addressId` | C |
 
+`GET …/me/orders/:orderNumber` devuelve lo mismo que el pedido público y más: por línea `variantId`, `productId` y `productHandle` (handle actual, `null` si el producto ya no existe); `payment { provider, status, method, instructions }` donde `instructions` (PaymentInstructions) solo viene con el pedido `pending` y del proveedor activo (mismas reglas que `GET /storefront/orders/:n`), y `reservedUntil` (solo `pending`, si no `null`). `GET …/me/orders` (listado) no cambia.
+
 `PATCH …/addresses/:addressId`: `documentType` y `documentNumber` aceptan `null` (o `""` en el número) para **quitar el documento**; quitar solo `documentType` limpia también el número salvo que se envíe uno nuevo. El mínimo de 4 caracteres de `documentNumber` solo se exige cuando se envía un valor.
-| GET | `/storefront/customers/me/orders` · `/me/orders/:orderNumber` | C |
 
 ### Clientes (admin) y marketing
 | Método | Ruta | Permiso |

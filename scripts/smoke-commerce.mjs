@@ -251,6 +251,15 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     assert(other.status === 200, `other e-mail → ${other.status}`);
     const noEmail = await call("PUT", `/storefront/carts/${c2.id}/discount`, { code: once }, undefined, c2.hdr);
     assert(noEmail.status === 200, `no e-mail still accepted → ${noEmail.status}`);
+    // X-Quote-Email is equivalent to ?email= on the quote
+    for (const who of [buyer, `new-${stamp}@dept.test`]) {
+      const viaQuery = await call("GET", `/storefront/carts/${c2.id}?email=${encodeURIComponent(who)}`, undefined, undefined, c2.hdr);
+      const viaHeader = await call("GET", `/storefront/carts/${c2.id}`, undefined, undefined, { ...c2.hdr, "x-quote-email": who });
+      assert(viaQuery.status === viaHeader.status, `X-Quote-Email status ${viaHeader.status} vs query ${viaQuery.status}`);
+      assert(JSON.stringify((await viaQuery.json()).quote) === JSON.stringify((await viaHeader.json()).quote), "X-Quote-Email quote differs from ?email=");
+    }
+    const badHeader = await call("GET", `/storefront/carts/${c2.id}`, undefined, undefined, { ...c2.hdr, "x-quote-email": "not-an-email" });
+    assert(badHeader.status === 400, `invalid X-Quote-Email → ${badHeader.status}`);
   });
 
   await check("commerce: dev mock endpoint validates input; shipping/discount admin is permission-guarded", async () => {

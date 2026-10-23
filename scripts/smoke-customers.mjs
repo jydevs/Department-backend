@@ -169,6 +169,15 @@ export async function customerChecks({ base, check, assert, ownerToken, analystT
         assert(list.some((o) => o.orderNumber === orderNumber), "guest order not linked");
         const one = await call("GET", `/storefront/customers/me/orders/${orderNumber}`, undefined, access);
         assert(one.status === 200, `own order → ${one.status}`);
+        const detail = await one.json();
+        const line = detail.lines[0];
+        assert(/^[0-9a-f-]{36}$/.test(line.variantId) && /^[0-9a-f-]{36}$/.test(line.productId) && typeof line.productHandle === "string", `line ids/handle ${JSON.stringify(line)}`);
+        assert("reservedUntil" in detail && "payment" in detail, "reservedUntil/payment missing");
+        if (detail.status === "pending") {
+          assert(detail.reservedUntil && detail.payment?.instructions, `pending order without instructions/reservedUntil ${JSON.stringify(detail.payment)}`);
+        } else {
+          assert(detail.reservedUntil === null && (detail.payment === null || detail.payment.instructions === null), "non-pending order must not carry instructions/reservedUntil");
+        }
         const otherEmail = `other-${stamp}@dept.test`;
         await call("POST", "/storefront/customers/register", { email: otherEmail, password: password1, firstName: "O", lastName: "T", acceptsMarketing: false });
         await ok(await call("POST", "/storefront/customers/verify-email", { token: await tokenFor(otherEmail, "email_verify"), password: password1 }), "verify other");

@@ -229,6 +229,7 @@ export async function gapsChecks({ base, check, assert, ownerToken, analystToken
       assert(card.compareAtPrice === 150000, `compareAtPrice ${card.compareAtPrice}`);
       assert(card.image.url.endsWith("-1.jpg") && card.hoverImage?.url.endsWith("-2.jpg"), `images ${JSON.stringify([card.image, card.hoverImage])}`);
       assert(card.tags.includes(tag) && card.vendor === vendor, "tags/vendor");
+      assert(typeof card.updatedAt === "string" && new Date(card.updatedAt).toISOString() === card.updatedAt, `updatedAt ${card.updatedAt}`);
       assert(card.price === 100000 && card.available === true, "legacy fields");
       const s = card.variants.find((v) => v.title === "S");
       const m = card.variants.find((v) => v.title === "M");

@@ -2952,6 +2952,23 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "x-quote-email",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Quote-Email",
+            "in": "header",
+            "description": "Buyer e-mail for once-per-email discount validation (alternative to ?email=; never logged)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
