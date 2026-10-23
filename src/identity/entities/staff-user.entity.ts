@@ -47,6 +47,10 @@ export class StaffUser extends VersionedEntity {
   @Column({ type: "text", array: true, default: "{}" })
   recoveryCodesHash!: string[];
 
+  /** When the pending (unconfirmed) totpSecretEnc was issued; null once 2FA is enabled or disabled. */
+  @Column({ type: "timestamptz", precision: 3, nullable: true })
+  totpSetupAt?: Date | null;
+
   /** Temporary password (team invite / owner bootstrap): the session may only change the password until it does. */
   @Column({ type: "boolean", default: false })
   mustChangePassword!: boolean;

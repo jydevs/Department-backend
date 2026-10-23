@@ -36,14 +36,12 @@ export class TOTPService {
   generateSecret(email: string, issuer = "Department"): { secret: string; uri: string } {
     const secret = this.totp.generateSecret();
     const encrypted = this.encryptSecret(secret);
+    return { secret: encrypted, uri: this.uriFor(encrypted, email, issuer) };
+  }
 
-    const uri = this.totp.toURI({
-      secret,
-      label: email,
-      issuer,
-    });
-
-    return { secret: encrypted, uri };
+  /** otpauth URI of an already stored (encrypted) secret: lets /auth/2fa/setup hand out the same pending secret again. */
+  uriFor(encryptedSecret: string, email: string, issuer = "Department"): string {
+    return this.totp.toURI({ secret: this.decryptSecret(encryptedSecret), label: email, issuer });
   }
 
   /**

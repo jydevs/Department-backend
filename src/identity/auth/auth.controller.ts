@@ -147,10 +147,11 @@ export class AuthController {
 
   /**
    * POST /auth/2fa/setup
-   * Initialize 2FA setup: return otpauth URI.
+   * Initialize 2FA setup: return otpauth URI. A pending secret issued less than 10 minutes ago is returned again (same URI).
    */
   @Post("2fa/setup")
   @AllowWhilePending("2fa")
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
   @ApiOperation({ summary: "Setup two-factor authentication" })
   async setupTwoFA(@CurrentActor() actor: Actor): Promise<SetupTwoFAResponse> {
     if (actor.kind !== "staff") {
@@ -168,6 +169,7 @@ export class AuthController {
    */
   @Post("2fa/enable")
   @AllowWhilePending("2fa")
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
   @ApiOperation({ summary: "Enable two-factor authentication" })
   async enableTwoFA(
     @CurrentActor() actor: Actor,

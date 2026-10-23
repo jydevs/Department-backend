@@ -18,6 +18,8 @@ import { TokenService, type JWTPayload } from "./token.service";
 import { TOTPService } from "./totp.service";
 
 const RECOVERY_CODE_COUNT = 8;
+/** A pending 2FA secret younger than this is handed out again by /auth/2fa/setup (same QR) instead of being rotated. */
+const PENDING_SECRET_REUSE_MS = 10 * 60 * 1000;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** A refresh token rotated this recently is presented again by a concurrent request (two tabs, a retry), not by a thief: no family revocation. */
 const REFRESH_GRACE_MS = 20_000;
@@ -220,8 +222,14 @@ export class AuthService implements OnModuleInit {
     if (!user) throw AppException.notFound("User");
     if (user.totpEnabled) throw AppException.conflict("2FA_ALREADY_ENABLED", "Two-factor authentication is already enabled");
 
+    // a stolen access token must not be able to churn the secret (and invalidate the QR the owner is scanning): reuse a recent pending one
+    const now = this.clock.now();
+    if (user.totpSecretEnc && user.totpSetupAt && now.getTime() - user.totpSetupAt.getTime() < PENDING_SECRET_REUSE_MS) {
+      return { otpauthUrl: this.totpService.uriFor(user.totpSecretEnc, user.email) };
+    }
+
     const { secret, uri } = this.totpService.generateSecret(user.email);
-    await this.staffUserRepo.update({ id: staffUserId }, { totpSecretEnc: secret, totpLastStep: null });
+    await this.staffUserRepo.update({ id: staffUserId }, { totpSecretEnc: secret, totpLastStep: null, totpSetupAt: now });
     return { otpauthUrl: uri };
   }
 
@@ -232,11 +240,14 @@ export class AuthService implements OnModuleInit {
     if (user.totpEnabled) throw AppException.conflict("2FA_ALREADY_ENABLED", "Two-factor authentication is already enabled");
     if (!user.totpSecretEnc) throw AppException.badRequest("2FA_NOT_STARTED", "Start the setup first");
 
+    // wrong password / code feed the same (account, IP) lockout as login and disable: this endpoint is not a password oracle for a stolen access token
     if (!(await this.passwordService.verify(password, user.passwordHash))) {
+      await this.recordFailedAuthenticated(user);
       throw AppException.unauthorized("Invalid password", "INVALID_CREDENTIALS");
     }
     const enrolStep = await this.totpService.verifyStep(code, user.totpSecretEnc);
     if (enrolStep === null) {
+      await this.recordFailedAuthenticated(user);
       throw AppException.badRequest("INVALID_OTP", "Invalid verification code");
     }
 
@@ -244,7 +255,7 @@ export class AuthService implements OnModuleInit {
     const recoveryCodesHash = await Promise.all(recoveryCodes.map((c) => this.passwordService.hash(c)));
 
     await this.transactionService.run(async (manager) => {
-      await manager.update(StaffUser, { id: staffUserId }, { totpEnabled: true, recoveryCodesHash, totpLastStep: enrolStep });
+      await manager.update(StaffUser, { id: staffUserId }, { totpEnabled: true, recoveryCodesHash, totpLastStep: enrolStep, totpSetupAt: null });
       await this.recordAudit({ action: "2FA_ENABLED", entityType: "StaffUser", entityId: staffUserId, manager });
     });
     return recoveryCodes;
@@ -282,6 +293,7 @@ export class AuthService implements OnModuleInit {
         totpSecretEnc: null,
         totpEnabled: false,
         totpLastStep: null,
+        totpSetupAt: null,
         recoveryCodesHash: [],
       });
 
