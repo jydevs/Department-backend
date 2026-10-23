@@ -70,8 +70,8 @@ export class CustomersAccountService {
   }
 
   /** Verifies the current password, then signs out every session (including this one). */
-  async changePassword(customerId: string, currentPassword: string, newPassword: string): Promise<void> {
-    await this.confirmPassword(customerId, currentPassword, "The current password is incorrect");
+  async changePassword(customerId: string, currentPassword: string, newPassword: string, ip?: string): Promise<void> {
+    await this.confirmPassword(customerId, currentPassword, "The current password is incorrect", ip);
     const newHash = await this.passwords.hash(newPassword);
     const now = this.clock.now();
 
@@ -273,8 +273,8 @@ export class CustomersAccountService {
   }
 
   /** Anonymizes the account after confirming the password. */
-  async deleteAccount(customerId: string, password: string): Promise<void> {
-    await this.confirmPassword(customerId, password, "The password is incorrect");
+  async deleteAccount(customerId: string, password: string, ip?: string): Promise<void> {
+    await this.confirmPassword(customerId, password, "The password is incorrect", ip);
     await this.transactions.run((manager) => this.erasure.erase(manager, customerId, "CUSTOMER_SELF_ERASED"));
   }
 
@@ -284,10 +284,11 @@ export class CustomersAccountService {
    * Password re-confirmation for sensitive actions. Failures feed the same atomic lockout counter as the login
    * (5 misses / 15 min); a locked account cannot be used to guess the password through these endpoints either.
    */
-  private async confirmPassword(customerId: string, password: string, message: string): Promise<void> {
+  private async confirmPassword(customerId: string, password: string, message: string, visitor?: string): Promise<void> {
     const customer = await this.requireCustomer(customerId);
     const now = this.clock.now();
-    const ip = RequestContextStore.get()?.ip;
+    // `visitor` comes from visitorIp() in the controller (the real visitor behind the Next server), like login; the socket IP is only the fallback
+    const ip = visitor ?? RequestContextStore.get()?.ip;
     const locked = await isLoginBlocked(this.customers.manager, "customer", customerId, ip, now);
     const ok = !!customer.passwordHash && (await this.passwords.verify(password, customer.passwordHash));
     if (locked || !ok) {

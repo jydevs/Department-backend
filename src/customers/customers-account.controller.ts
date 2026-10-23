@@ -1,7 +1,10 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Query, Req, Res } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
-import type { Response } from "express";
+import type { Request, Response } from "express";
+import { ENV } from "../config/config.module";
+import type { Env } from "../config/env";
+import { visitorIp } from "../common/throttle/storefront-throttler.guard";
 import { OffsetPage, PageQueryDto } from "../common/pagination/pagination";
 import { CurrentCustomerId, CustomerAuth } from "./auth/customer-auth.guard";
 import { CustomersAccountService } from "./customers-account.service";
@@ -27,7 +30,10 @@ import {
 @CustomerAuth()
 @Controller("storefront/customers/me")
 export class CustomersAccountController {
-  constructor(private readonly account: CustomersAccountService) {}
+  constructor(
+    private readonly account: CustomersAccountService,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: "My profile" })
@@ -46,8 +52,8 @@ export class CustomersAccountController {
   @HttpCode(200)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: "Change my password (signs out every session)" })
-  async changePassword(@CurrentCustomerId() id: string, @Body() dto: CustomerChangePasswordDto): Promise<MessageResponse> {
-    await this.account.changePassword(id, dto.currentPassword, dto.newPassword);
+  async changePassword(@CurrentCustomerId() id: string, @Body() dto: CustomerChangePasswordDto, @Req() req: Request): Promise<MessageResponse> {
+    await this.account.changePassword(id, dto.currentPassword, dto.newPassword, visitorIp(req, this.env.STOREFRONT_SERVER_KEY));
     return { message: "Password changed. Please log in again." };
   }
 
@@ -105,8 +111,8 @@ export class CustomersAccountController {
   @HttpCode(200)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: "Delete (anonymize) my account; requires my password" })
-  async deleteAccount(@CurrentCustomerId() id: string, @Body() dto: DeleteAccountDto, @Res({ passthrough: true }) res: Response): Promise<MessageResponse> {
-    await this.account.deleteAccount(id, dto.password);
+  async deleteAccount(@CurrentCustomerId() id: string, @Body() dto: DeleteAccountDto, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<MessageResponse> {
+    await this.account.deleteAccount(id, dto.password, visitorIp(req, this.env.STOREFRONT_SERVER_KEY));
     res.clearCookie("dept_ct", { path: "/api/v1/storefront/customers" });
     return { message: "Your account has been deleted" };
   }
