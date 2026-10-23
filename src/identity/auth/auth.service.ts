@@ -9,7 +9,7 @@ import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import { AuditService } from "../../audit/audit.service";
 import { affectedCount } from "../../common/sql/query-result";
-import { clearLoginFailures, isLoginBlocked, recordLoginFailure, recordLoginSuccess } from "../../common/auth/login-attempts";
+import { clearLoginFailures, isLoginBlocked, loginBlock, recordLoginFailure, recordLoginSuccess } from "../../common/auth/login-attempts";
 import { TransactionService } from "../../database/transaction.service";
 import { RefreshToken, StaffUser } from "../entities";
 import { PasswordService } from "./password.service";
@@ -73,11 +73,14 @@ export class AuthService implements OnModuleInit {
     const passwordOk = await this.passwordService.verify(password, user?.passwordHash ?? this.dummyHash);
     const clientIp = ip ?? RequestContextStore.get()?.ip;
     // failures are counted per (account, IP): a stranger failing from elsewhere cannot lock the owner out of their usual IP
-    const locked = !!user && (await isLoginBlocked(this.dataSource, "staff", user.id, clientIp, now));
+    const block = user ? await loginBlock(this.dataSource, "staff", user.id, clientIp, now) : null;
+    // "pair" (this account from this IP is locked) is final. "global" (account-wide back-off against an IP never seen) is
+    // lifted below only for a holder of password AND a valid second factor; without 2FA the back-off stays.
+    const locked = block === "pair" || (block === "global" && !(user?.totpEnabled && !!totp));
 
     if (!user || !passwordOk || !user.isActive || locked) {
-      // a blocked (account, IP) is not touched again: attackers must not be able to extend the lock forever
-      if (user && user.isActive && !locked) await this.recordFailedLogin(user.id, now, clientIp);
+      // a blocked (account, IP) is not touched again (also under the lifted global back-off): attackers must not be able to extend the lock forever
+      if (user && user.isActive && block === null) await this.recordFailedLogin(user.id, now, clientIp);
       else if (!user) await this.recordAudit({ action: "LOGIN_FAILED", entityType: "StaffUser" });
       throw AppException.unauthorized("Invalid credentials", "INVALID_CREDENTIALS");
     }
@@ -88,6 +91,7 @@ export class AuthService implements OnModuleInit {
         ? await this.verifyTotpOnce(user, totp)
         : await this.consumeRecoveryCode(user.id, totp);
       if (!ok) {
+        // also while the global back-off is lifted for this attempt: a wrong code counts, so a password thief cannot guess TOTP codes for free
         await this.recordFailedLogin(user.id, now, clientIp);
         throw AppException.unauthorized("Invalid credentials", "INVALID_CREDENTIALS");
       }

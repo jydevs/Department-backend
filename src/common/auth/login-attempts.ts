@@ -7,6 +7,9 @@ import { normalizeIp } from "../net/ip";
  *  - Global brake: GLOBAL_THRESHOLD failures on one account within GLOBAL_WINDOW_MS (any IP) start an increasing back-off
  *    (BACKOFF_BASE_MS doubling every GLOBAL_STEP further failures, capped at BACKOFF_MAX_MS) for IPs that have NOT logged in
  *    successfully to that account in the last KNOWN_IP_MS. It never becomes a hard lock, and the owner's usual IPs are exempt.
+ *    Staff login lifts it for an attempt that carries a valid password AND a valid 2FA code (TOTP or recovery code): holding
+ *    both factors is exactly what the brake wants to prove, so the owner travelling to a new IP is not locked out by an attacker
+ *    spraying passwords. Accounts without 2FA keep the back-off (customers too). Wrong codes still count as failures.
  *
  * Callers answer INVALID_CREDENTIALS in every blocked case (no oracle) and do not record failures while blocked
  * (an attacker cannot extend a lock by hammering it).
