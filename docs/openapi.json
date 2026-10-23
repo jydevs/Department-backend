@@ -240,6 +240,31 @@
         ]
       }
     },
+    "/api/v1/auth/2fa/recovery-codes": {
+      "post": {
+        "operationId": "AuthController_regenerateRecoveryCodes",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateRecoveryCodesRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Regenerate the two-factor recovery codes",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/change-password": {
       "post": {
         "operationId": "AuthController_changePassword",
@@ -5932,7 +5957,25 @@
           },
           "code": {
             "type": "string",
-            "pattern": "^\\d{6}$"
+            "pattern": "^(\\d{6}|[A-Z0-9]{8})$"
+          }
+        },
+        "required": [
+          "password",
+          "code"
+        ]
+      },
+      "RegenerateRecoveryCodesRequestDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^(\\d{6}|[A-Z0-9]{8})$"
           }
         },
         "required": [

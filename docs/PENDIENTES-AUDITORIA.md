@@ -108,3 +108,21 @@ confirmación; el front debe tratar `payment: null` como «pedido confirmado».
 - **Permisos (hallazgo 9)**: los roles personalizados que tenían `orders:write` no reciben `orders:payments` / `orders:refunds`; hay que asignarlos a mano en el panel.
 - **Revalidación (hallazgo 7)**: los movimientos de stock ya solo revalidan `catalog:product:<handle>` (y colecciones manuales con ese producto). Las colecciones
   inteligentes, el home y los listados que muestren «agotado» se actualizan por su `revalidate` temporal, no al instante.
+
+## Seguridad de cuentas, ronda 2 (`fix/security-accounts-2`)
+
+**Resuelto**
+- **2FA sin recuperación**: `POST /auth/2fa/disable` acepta también un código de recuperación (se consume); `POST /auth/2fa/recovery-codes` (contraseña + TOTP o código de recuperación) regenera los 8 códigos; `yarn staff:reset-2fa <email>` y `yarn staff:unlock <email>` (con acceso a la BD, auditan con actor `system`) cubren «sin móvil y sin códigos» y los bloqueos de login.
+- **change-password**: rechaza nueva == actual (422 `PASSWORD_UNCHANGED`) y devuelve una sesión nueva (`accessToken` + cookie `dept_rt`, `mustChangePassword: false`).
+- **`2fa/enable` como oráculo**: los fallos cuentan como en `disable` (cuenta+IP); `setup` y `enable` con el throttle de auth; el secreto pendiente de menos de 10 min se reutiliza (migración `totp_setup_at`).
+- **2FA obligatorio**: ahora para cualquier rol con `roles:write`, `staff:write`, `settings:write`, `orders:payments`, `orders:refunds`, `import:write`, `customers:write` o `discounts:write` (`TWO_FACTOR_REQUIRED_PERMISSIONS`).
+- **IPv6 y retroceso global**: IPv6 se normaliza a /64 y `::ffff:a.b.c.d` a IPv4 igual en `login_attempts` y el throttler. El retroceso global deja pasar a una cuenta con 2FA cuando la misma petición trae contraseña **y** código correctos (razonamiento: ambos factores son lo que el freno quiere demostrar; un código erróneo sigue contando, así que no se puede adivinar TOTP gratis). Las cuentas sin 2FA y los clientes mantienen el retroceso.
+- **Clientes**: cambio de contraseña y borrado de cuenta usan `visitorIp` como el login.
+- **Descuentos**: se comprueba primero el límite por visitante, luego visitante+carrito; al llenarse el mapa se desalojan las entradas más antiguas (ya no `clear()`); `Retry-After` en el 429.
+- **Configuración**: con `NODE_ENV=production` se rechaza `OWNER_MUST_CHANGE_PASSWORD=false` y `REQUIRE_STAFF_2FA=false` emite un warning al arrancar.
+
+**Pendiente / no hecho**
+- Carrera de lectura/escritura del umbral global (30 fallos): la comprobación sigue siendo una lectura previa; una ráfaga de peticiones realmente paralelas puede colar unos pocos intentos extra (acotado por el throttler 5/min/IP y por el bloqueo atómico por pareja). Un UPDATE atómico exigiría un contador agregado por cuenta; no se hizo por no ser barato.
+- Durante un retroceso global activo, el titular con 2FA debe enviar el código en la misma petición que la contraseña (si no, ve `INVALID_CREDENTIALS`); el front debería ofrecer reenviar ambos. Salida de emergencia: `yarn staff:unlock <email>`.
+- Filas antiguas de `login_attempts` con IPv6 sin normalizar quedan como cubos aparte hasta que la limpieza horaria las purgue (30 días).
+- Los tokens de acceso ya emitidos siguen válidos hasta expirar tras cambiar la contraseña (JWT sin estado); solo los refresh tokens se revocan.

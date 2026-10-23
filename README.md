@@ -41,6 +41,8 @@ Contenido del sitio: `SEED_DEFAULT_CONTENT=true` (por defecto) crea al arrancar 
 | `yarn migration:run` · `yarn migration:revert` | Aplica / revierte (desarrollo, con ts-node) |
 | `yarn migration:run:prod` | Aplica las migraciones desde `dist/` (CI y despliegue) |
 | `yarn owner:create` | Crea el primer Owner |
+| `yarn staff:reset-2fa <email>` | Recuperación: desactiva el 2FA de un miembro (perdió móvil y códigos), exige cambiar la contraseña, revoca sus sesiones y audita como `system` |
+| `yarn staff:unlock <email>` | Recuperación: borra los bloqueos de login (`login_attempts`) de un miembro y audita como `system` |
 | `yarn content:seed` | Crea los documentos CMS por defecto que falten (idempotente, nunca pisa ediciones). También se ejecuta al arrancar si `SEED_DEFAULT_CONTENT=true` (por defecto) |
 | `yarn catalog:seed [--force]` | Catálogo demo: solo si no hay productos (con `--force` añade los que falten por handle). Imágenes por ruta relativa `/images/...` del front |
 | `yarn smoke` | Comprobaciones contra una API en marcha (`API_URL`, por defecto `localhost:4000`) |
