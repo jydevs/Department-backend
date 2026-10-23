@@ -97,8 +97,22 @@ export async function identityChecks({ base, check, assert }) {
     const created = await post("/admin/staff", { email, fullName: "Smoke Analyst", roleId: analyst.id }, token);
     assert(created.status < 300, `create status ${created.status}`);
     const temp = (await created.json()).password;
-    const login = await post("/auth/login", { email, password: temp });
-    analystToken = (await login.json()).accessToken;
+    const first = await post("/auth/login", { email, password: temp });
+    const firstBody = await first.json();
+    assert(firstBody.mustChangePassword === true && firstBody.twoFactorSetupRequired === false, `login flags ${JSON.stringify(firstBody)}`);
+    // temporary password: only me/logout/refresh/change-password work until it is replaced
+    const me0 = await (await get("/auth/me", firstBody.accessToken)).json();
+    assert(me0.mustChangePassword === true, "me.mustChangePassword");
+    const blocked = await get("/admin/products", firstBody.accessToken);
+    const blockedBody = await blocked.json();
+    assert(blocked.status === 403 && blockedBody.code === "PASSWORD_CHANGE_REQUIRED", `pending password → ${blocked.status} ${JSON.stringify(blockedBody)}`);
+    const newPassword = `Smoke-${Date.now()}-Pass!`;
+    const changed = await post("/auth/change-password", { current: temp, new: newPassword }, firstBody.accessToken);
+    assert(changed.status < 300, `change-password → ${changed.status}`);
+    const login = await post("/auth/login", { email, password: newPassword });
+    const loginBody = await login.json();
+    assert(loginBody.mustChangePassword === false, "flag must clear after the change");
+    analystToken = loginBody.accessToken;
     const denied = await post(
       "/admin/staff",
       { email: `x${Date.now()}@dept.test`, fullName: "X", roleId: analyst.id },
@@ -106,5 +120,27 @@ export async function identityChecks({ base, check, assert }) {
     );
     assert(denied.status === 403, `got ${denied.status}`);
   });
+  // lockout is per (account, IP): needs the Next-server key to simulate a second IP (X-Visitor-Ip), so it only runs when the smoke has it
+  const serverKey = process.env.STOREFRONT_SERVER_KEY;
+  if (!serverKey) console.log("       (set STOREFRONT_SERVER_KEY, same as the API, to run the per-IP lockout check)");
+  else {
+    await check("failed logins lock only the (account, IP) pair: another IP cannot lock the owner out", async () => {
+      const roles = await (await get("/admin/roles", token)).json();
+      const analyst = (Array.isArray(roles) ? roles : roles.items).find((r) => r.key === "analyst");
+      const email = `lock-${Date.now()}@dept.test`;
+      const created = await post("/admin/staff", { email, fullName: "Smoke Lock", roleId: analyst.id }, token);
+      const pass = (await created.json()).password;
+      const attacker = { "x-storefront-key": serverKey, "x-visitor-ip": "203.0.113.77" };
+      for (let i = 0; i < 6; i++) {
+        const bad = await post("/auth/login", { email, password: "wrong-password-123" }, null, attacker);
+        const b = await bad.json();
+        assert(bad.status === 401 && b.code === "INVALID_CREDENTIALS", `attacker attempt ${i} → ${bad.status} ${b.code}`);
+      }
+      const attackerRight = await post("/auth/login", { email, password: pass }, null, attacker);
+      assert(attackerRight.status === 401, `locked pair must refuse even the right password: ${attackerRight.status}`);
+      const owner = await post("/auth/login", { email, password: pass }); // the usual IP of the account holder
+      assert(owner.status < 300, `legitimate IP must still log in: ${owner.status}`);
+    });
+  }
   return { ownerToken: token, analystToken };
 }

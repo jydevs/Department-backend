@@ -231,6 +231,30 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     const results = await Promise.all(carts.map((c, i) => doCheckout(c, `idem-${stamp}-race-${i}`, { email: `race${i}-${stamp}@dept.test` })));
     const wins = results.filter((r) => r.status < 300).length;
     assert(wins === 1, `${wins} checkouts redeemed a single-use code (${results.map((r) => r.status)})`);
+    // oracle: an exhausted code looks exactly like an unknown one to the public
+    const late = await newCart();
+    await ok(await addLine(late, prod.variantId, 1), "add");
+    const exhausted = await call("PUT", `/storefront/carts/${late.id}/discount`, { code: limited }, undefined, late.hdr);
+    const exBody = await exhausted.json();
+    assert(exhausted.status === 422 && exBody.details?.reason === "not_found", `exhausted code → ${exhausted.status} ${JSON.stringify(exBody)}`);
+  });
+
+  await check("commerce: expired codes answer not_found; discount attempts are rate limited per IP+cart (429)", async () => {
+    const prod = await newProduct(`Smoke Oracle ${stamp}`, 2);
+    const expired = `EXPIRED${stamp}`;
+    const day = 24 * 3600 * 1000;
+    await ok(await call("POST", "/admin/discounts", { code: expired, title: "old", type: "fixed", value: 1000, startsAt: new Date(Date.now() - 3 * day).toISOString(), endsAt: new Date(Date.now() - day).toISOString() }, ownerToken), "expired discount");
+    const c = await newCart();
+    await ok(await addLine(c, prod.variantId, 1), "add");
+    const r = await call("PUT", `/storefront/carts/${c.id}/discount`, { code: expired }, undefined, c.hdr);
+    const body = await r.json();
+    assert(r.status === 422 && body.details?.reason === "not_found", `expired code → ${r.status} ${JSON.stringify(body)}`);
+    let limited = 0;
+    for (let i = 0; i < 12; i++) {
+      const x = await call("PUT", `/storefront/carts/${c.id}/discount`, { code: `GUESS${i}` }, undefined, c.hdr);
+      if (x.status === 429) limited++;
+    }
+    assert(limited >= 2, `expected the 11th+ attempts on one cart to be 429, got ${limited}`);
   });
 
   await check("commerce: a once-per-email code is rejected as already_used when the cart sends the e-mail", async () => {
