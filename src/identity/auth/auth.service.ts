@@ -90,9 +90,7 @@ export class AuthService implements OnModuleInit {
 
     if (user.totpEnabled) {
       if (!totp) throw AppException.unauthorized("Two-factor authentication required", "TWO_FACTOR_REQUIRED");
-      const ok = /^\d{6}$/.test(totp)
-        ? await this.verifyTotpOnce(user, totp)
-        : await this.consumeRecoveryCode(user.id, totp);
+      const ok = await this.verifySecondFactor(user, totp);
       if (!ok) {
         // also while the global back-off is lifted for this attempt: a wrong code counts, so a password thief cannot guess TOTP codes for free
         await this.recordFailedLogin(user.id, now, clientIp);
@@ -262,7 +260,8 @@ export class AuthService implements OnModuleInit {
   }
 
   /**
-   * Disable 2FA: verify password and TOTP code, then clear settings.
+   * Disable 2FA: verify password and a second factor (TOTP code or, when the phone is lost, a recovery code which is
+   * consumed), then clear settings.
    */
   async disableTwoFA(staffUserId: string, password: string, code: string): Promise<void> {
     const user = await this.staffUserRepo.findOneBy({ id: staffUserId });
@@ -277,13 +276,11 @@ export class AuthService implements OnModuleInit {
       throw AppException.unauthorized("Invalid password", "INVALID_CREDENTIALS");
     }
 
-    // Verify TOTP code
-    if (!user.totpSecretEnc) {
+    if (!user.totpEnabled || !user.totpSecretEnc) {
       throw AppException.badRequest("2FA_NOT_ENABLED", "Two-factor authentication is not enabled");
     }
 
-    const totpValid = await this.verifyTotpOnce(user, code);
-    if (!totpValid) {
+    if (!(await this.verifySecondFactor(user, code))) {
       await this.recordFailedAuthenticated(user);
       throw AppException.badRequest("INVALID_OTP", "Invalid verification code");
     }
@@ -304,6 +301,34 @@ export class AuthService implements OnModuleInit {
         manager,
       });
     });
+  }
+
+  /**
+   * Replace the 8 recovery codes (the old ones stop working). Needs the password and a second factor (TOTP or an unused recovery code).
+   * The new codes are returned once, in clear.
+   */
+  async regenerateRecoveryCodes(staffUserId: string, password: string, code: string): Promise<string[]> {
+    const user = await this.staffUserRepo.findOneBy({ id: staffUserId });
+    if (!user) throw AppException.notFound("User");
+    if (!(await this.passwordService.verify(password, user.passwordHash))) {
+      await this.recordFailedAuthenticated(user);
+      throw AppException.unauthorized("Invalid password", "INVALID_CREDENTIALS");
+    }
+    if (!user.totpEnabled || !user.totpSecretEnc) {
+      throw AppException.badRequest("2FA_NOT_ENABLED", "Two-factor authentication is not enabled");
+    }
+    if (!(await this.verifySecondFactor(user, code))) {
+      await this.recordFailedAuthenticated(user);
+      throw AppException.badRequest("INVALID_OTP", "Invalid verification code");
+    }
+
+    const recoveryCodes = this.generateRecoveryCodes(RECOVERY_CODE_COUNT);
+    const recoveryCodesHash = await Promise.all(recoveryCodes.map((c) => this.passwordService.hash(c)));
+    await this.transactionService.run(async (manager) => {
+      await manager.update(StaffUser, { id: staffUserId }, { recoveryCodesHash });
+      await this.recordAudit({ action: "RECOVERY_CODES_REGENERATED", entityType: "StaffUser", entityId: staffUserId, manager });
+    });
+    return recoveryCodes;
   }
 
   /**
@@ -444,6 +469,11 @@ export class AuthService implements OnModuleInit {
       [user.id, step],
     );
     return affectedCount(res) === 1;
+  }
+
+  /** 6 digits = authenticator code (burns its time step); anything else = one-time recovery code (consumed). */
+  private verifySecondFactor(user: StaffUser, code: string): Promise<boolean> {
+    return /^[0-9]{6}$/.test(code) ? this.verifyTotpOnce(user, code) : this.consumeRecoveryCode(user.id, code);
   }
 
   /** A failed re-authentication of a signed-in user (change password, disable 2FA) feeds the same (account, IP) lockout as login. */

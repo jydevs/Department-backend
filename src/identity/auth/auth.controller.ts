@@ -22,6 +22,8 @@ import {
   ChangePasswordRequestDto,
   type ChangePasswordResponse,
   SetupTwoFAResponse,
+  RegenerateRecoveryCodesRequestDto,
+  type RegenerateRecoveryCodesResponse,
 } from "./dto";
 
 /**
@@ -189,7 +191,7 @@ export class AuthController {
 
   /**
    * POST /auth/2fa/disable
-   * Verify password and code, disable 2FA.
+   * Verify password and code (authenticator code or a recovery code), disable 2FA.
    */
   @Post("2fa/disable")
   @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
@@ -205,6 +207,25 @@ export class AuthController {
     await this.authService.disableTwoFA(actor.staffId, dto.password, dto.code);
 
     return { message: "Two-factor authentication disabled" };
+  }
+
+  /**
+   * POST /auth/2fa/recovery-codes
+   * Password + (authenticator code or recovery code): replaces the 8 recovery codes and returns the new ones once.
+   */
+  @Post("2fa/recovery-codes")
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
+  @ApiOperation({ summary: "Regenerate the two-factor recovery codes" })
+  async regenerateRecoveryCodes(
+    @CurrentActor() actor: Actor,
+    @Body() dto: RegenerateRecoveryCodesRequestDto,
+  ): Promise<RegenerateRecoveryCodesResponse> {
+    if (actor.kind !== "staff") {
+      throw AppException.unauthorized("Authentication required");
+    }
+
+    const recoveryCodes = await this.authService.regenerateRecoveryCodes(actor.staffId, dto.password, dto.code);
+    return { recoveryCodes, message: "Recovery codes regenerated. The previous ones no longer work; save these in a secure location." };
   }
 
   /**

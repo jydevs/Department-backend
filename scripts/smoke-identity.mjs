@@ -155,5 +155,48 @@ export async function identityChecks({ base, check, assert }) {
       assert(owner.status < 300, `legitimate IP must still log in: ${owner.status}`);
     });
   }
+  await check("2FA: setup reuses a recent pending secret; bad password on enable is refused; a recovery code regenerates the codes and disables 2FA", async () => {
+    const { generate } = await import("otplib");
+    const roles = await (await get("/admin/roles", token)).json();
+    const analyst = (Array.isArray(roles) ? roles : roles.items).find((r) => r.key === "analyst");
+    const email = `twofa-${Date.now()}@dept.test`;
+    const temp = (await (await post("/admin/staff", { email, fullName: "Smoke 2FA", roleId: analyst.id }, token)).json()).password;
+    const first = await (await post("/auth/login", { email, password: temp })).json();
+    const password = `Smoke-${Date.now()}-Pass!`;
+    const changed = await post("/auth/change-password", { current: temp, new: password }, first.accessToken);
+    const session = await changed.json();
+    assert(changed.status < 300 && session.accessToken, `change-password → ${changed.status}`);
+    const at = session.accessToken;
+
+    const s1 = await (await post("/auth/2fa/setup", {}, at)).json();
+    const s2 = await (await post("/auth/2fa/setup", {}, at)).json();
+    assert(s1.otpauthUrl?.startsWith("otpauth://") && s1.otpauthUrl === s2.otpauthUrl, "a second setup within 10 minutes must return the same secret/QR");
+    const secret = new URL(s1.otpauthUrl).searchParams.get("secret");
+    assert(secret, "otpauth URL without secret");
+
+    const badPass = await post("/auth/2fa/enable", { password: "not-my-password-123", code: await generate({ secret }) }, at);
+    assert(badPass.status === 401, `enable with a wrong password → ${badPass.status}`);
+    const enabled = await post("/auth/2fa/enable", { password, code: await generate({ secret }) }, at);
+    const enabledBody = await enabled.json();
+    assert(enabled.status < 300 && enabledBody.recoveryCodes?.length === 8, `enable → ${enabled.status} ${JSON.stringify(enabledBody)}`);
+    const [r1, r2] = enabledBody.recoveryCodes;
+
+    // lost phone: a recovery code replaces the codes (it is consumed, the old set no longer works)
+    const regen = await post("/auth/2fa/recovery-codes", { password, code: r1 }, at);
+    const regenBody = await regen.json();
+    assert(regen.status < 300 && regenBody.recoveryCodes?.length === 8 && !regenBody.recoveryCodes.includes(r2), `recovery-codes → ${regen.status} ${JSON.stringify(regenBody)}`);
+    const stale = await post("/auth/2fa/recovery-codes", { password, code: r2 }, at);
+    assert(stale.status === 400 && (await stale.json()).code === "INVALID_OTP", `a code from the replaced set must not work: ${stale.status}`);
+    const reused = await post("/auth/2fa/recovery-codes", { password, code: r1 }, at);
+    assert(reused.status === 400, `a consumed recovery code must not work twice: ${reused.status}`);
+
+    const needs = await post("/auth/login", { email, password });
+    assert(needs.status === 401 && (await needs.json()).code === "TWO_FACTOR_REQUIRED", "login must ask for the second factor");
+    const disabled = await post("/auth/2fa/disable", { password, code: regenBody.recoveryCodes[0] }, at);
+    assert(disabled.status < 300, `disable with a recovery code → ${disabled.status}`);
+    const plain = await post("/auth/login", { email, password });
+    assert(plain.status < 300, `login without 2FA after disabling → ${plain.status}`);
+  });
+
   return { ownerToken: token, analystToken };
 }

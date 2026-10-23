@@ -23,6 +23,8 @@
     "smoke": "node scripts/smoke.mjs",
     "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
     "owner:create": "ts-node -r tsconfig-paths/register scripts/create-owner.ts",
+    "staff:reset-2fa": "ts-node -r tsconfig-paths/register scripts/staff-reset-2fa.ts",
+    "staff:unlock": "ts-node -r tsconfig-paths/register scripts/staff-unlock.ts",
     "content:seed": "ts-node -r tsconfig-paths/register scripts/seed-content.ts",
     "catalog:seed": "ts-node -r tsconfig-paths/register scripts/seed-catalog.ts"
   },
