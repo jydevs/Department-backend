@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { ThrottlerGuard, ThrottlerRequest } from "@nestjs/throttler";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
+import { normalizeIp } from "../net/ip";
 
 /** Tracker of the Next.js server's own reads (valid X-Storefront-Key, no X-Visitor-Ip): SSR/ISR fetches that are not tied to one visitor. */
 const SERVER_READS = "server:reads";
@@ -17,12 +18,12 @@ const safeEqual = (a: string, b: string) => {
 
 type TrackedReq = { ip?: string; method?: string; headers?: Record<string, string | string[] | undefined> };
 
-/** Real visitor identity for rate limiting: the forwarded X-Visitor-Ip when the Next server proves itself, else the socket/proxy IP. */
+/** Real visitor identity for rate limiting (normalised: IPv6 as its /64, ::ffff:a.b.c.d as IPv4; same key as login_attempts): the forwarded X-Visitor-Ip when the Next server proves itself, else the socket/proxy IP. */
 export function visitorIp(req: TrackedReq, storefrontKey: string | undefined): string {
   const presented = req.headers?.["x-storefront-key"];
   const visitor = req.headers?.["x-visitor-ip"];
-  if (storefrontKey && typeof presented === "string" && safeEqual(presented, storefrontKey) && typeof visitor === "string" && visitor.length <= 64) return visitor;
-  return req.ip ?? "unknown";
+  if (storefrontKey && typeof presented === "string" && safeEqual(presented, storefrontKey) && typeof visitor === "string" && visitor.length <= 64) return normalizeIp(visitor);
+  return normalizeIp(req.ip);
 }
 
 /**
@@ -39,11 +40,11 @@ export class StorefrontThrottlerGuard extends ThrottlerGuard {
     const presented = req.headers?.["x-storefront-key"];
     const visitor = req.headers?.["x-visitor-ip"];
     if (key && typeof presented === "string" && safeEqual(presented, key) && typeof visitor === "string" && visitor.length <= 64) {
-      return `visitor:${visitor}`;
+      return `visitor:${normalizeIp(visitor)}`;
     }
     // the Next server reading catalog/CMS on its own: its own, much larger bucket (GET only; a mutation keeps the per-IP limits)
     if (key && typeof presented === "string" && safeEqual(presented, key) && req.method === "GET") return SERVER_READS;
-    return req.ip ?? "unknown";
+    return normalizeIp(req.ip);
   }
 
   protected override async handleRequest(props: ThrottlerRequest): Promise<boolean> {
