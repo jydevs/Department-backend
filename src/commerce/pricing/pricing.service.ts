@@ -228,8 +228,9 @@ export class PricingService {
   }
 
   private invalid(reason: DiscountInvalidReason, extra?: Record<string, unknown>): AppException {
-    if (reason === "inactive" || reason === "not_started") {
-      // Public responses must not reveal that a code exists but is disabled / not live yet.
+    if (reason === "inactive" || reason === "not_started" || reason === "expired" || reason === "usage_limit_reached") {
+      // Public responses must not reveal that a code exists but is disabled, not live yet, expired or exhausted (code-guessing oracle):
+      // all of them look like an unknown code. The real reason only goes to the log.
       this.logger.log(`Discount rejected (${reason})`);
       return new AppException(422, "DISCOUNT_INVALID", "The discount code cannot be applied", { reason: "not_found" });
     }

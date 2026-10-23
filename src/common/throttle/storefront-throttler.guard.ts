@@ -15,6 +15,16 @@ const safeEqual = (a: string, b: string) => {
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
+type TrackedReq = { ip?: string; method?: string; headers?: Record<string, string | string[] | undefined> };
+
+/** Real visitor identity for rate limiting: the forwarded X-Visitor-Ip when the Next server proves itself, else the socket/proxy IP. */
+export function visitorIp(req: TrackedReq, storefrontKey: string | undefined): string {
+  const presented = req.headers?.["x-storefront-key"];
+  const visitor = req.headers?.["x-visitor-ip"];
+  if (storefrontKey && typeof presented === "string" && safeEqual(presented, storefrontKey) && typeof visitor === "string" && visitor.length <= 64) return visitor;
+  return req.ip ?? "unknown";
+}
+
 /**
  * Rate-limit per real visitor. Server-side rendering makes ALL storefront traffic arrive from the
  * Next.js host, so limiting by socket IP would throttle the whole site as one client. When the Next server

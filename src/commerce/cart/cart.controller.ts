@@ -1,8 +1,13 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
+import type { Request } from "express";
 import { ApiHeader } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { AppException } from "../../common/errors/app-exception";
 import { Public } from "../../common/auth/decorators";
+import { RateWindow } from "../../common/throttle/rate-window";
+import { visitorIp } from "../../common/throttle/storefront-throttler.guard";
+import { ENV } from "../../config/config.module";
+import type { Env } from "../../config/env";
 import { CartToken } from "./cart-token.decorator";
 import { CartService } from "./cart.service";
 import {
@@ -21,7 +26,14 @@ import {
 @Public()
 @Throttle({ default: { limit: 120, ttl: 60_000 } })
 export class CartController {
-  constructor(private readonly carts: CartService) {}
+  /** Discount-code guessing brakes: ~10 tries/min per visitor+cart and a higher cap per visitor across carts. */
+  private readonly discountPerCart = new RateWindow(10, 60_000);
+  private readonly discountPerIp = new RateWindow(40, 60_000);
+
+  constructor(
+    private readonly carts: CartService,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
 
   @Post()
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
@@ -67,7 +79,16 @@ export class CartController {
   }
 
   @Put(":id/discount")
-  setDiscount(@Param() { id }: CartParamDto, @CartToken() token: string, @Body() body: SetCartDiscountDto): Promise<CartResponse> {
+  setDiscount(
+    @Param() { id }: CartParamDto,
+    @CartToken() token: string,
+    @Body() body: SetCartDiscountDto,
+    @Req() req: Request,
+  ): Promise<CartResponse> {
+    const ip = visitorIp(req, this.env.STOREFRONT_SERVER_KEY);
+    if (!this.discountPerCart.hit(`${ip}|${id}`) || !this.discountPerIp.hit(ip)) {
+      throw new AppException(429, "RATE_LIMITED", "Too many discount attempts, try again in a minute");
+    }
     return this.carts.setDiscount(id, token, body.code, body.email);
   }
 
