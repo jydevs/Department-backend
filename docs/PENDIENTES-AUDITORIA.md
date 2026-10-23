@@ -5,11 +5,11 @@ Hallazgos de la auditoría de backend (ronda 2) que **no** se corrigen en la ram
 | N.º | Estado | Resumen |
 | --- | --- | --- |
 | 8 | Pendiente | Pago aprobado con importe distinto: no se puede reembolsar ni limpiar. |
-| 10 | Pendiente | El bloqueo de cuentas permite un DoS dirigido. |
+| 10 | Resuelto | El bloqueo de cuentas permite un DoS dirigido. |
 | 15 | Pendiente | Media en disco local sin persistencia garantizada. |
 | 21 | Pendiente | `schema:log` con ruido (índice GIN, defaults, FKs). |
-| 23 | Pendiente | Sin 2FA obligatorio ni cambio forzoso de la contraseña temporal. |
-| 25 | Pendiente | Oráculo de códigos de descuento. |
+| 23 | Resuelto | Sin 2FA obligatorio ni cambio forzoso de la contraseña temporal. |
+| 25 | Resuelto | Oráculo de códigos de descuento. |
 | 26 | Pendiente | Valores de entrada en `pgMessage` de los logs. |
 | 27 | Parcial | `ensureEditableDefaults`: corregido lo barato; queda lo de versiones programadas. |
 | 28 | Pendiente | Un total de 0 no se puede comprar. |
@@ -26,6 +26,10 @@ líneas del pedido), con su permiso (`orders:refunds`), estado (`pending`/`done`
 como `resolved`. Solo documentado.
 
 ### 10. Bloqueo de cuentas como DoS dirigido
+
+**Resuelto** (`fix/security-accounts`): los fallos se cuentan por (cuenta, IP) en la tabla `login_attempts` (staff y clientes): 5 fallos desde una IP bloquean solo esa pareja 15 min; un umbral global de 30 fallos/15 min por cuenta aplica un retroceso creciente (30 s → 15 min) solo a IPs que nunca entraron con éxito; el titular desde su IP habitual no queda bloqueado. Limpieza horaria en mantenimiento (`login_attempts`, 30 días). Quedan las columnas `failed_login_count`/`locked_until` en desuso. Sigue pendiente (no hecho): aviso por email del bloqueo y CAPTCHA.
+
+Texto original del hallazgo:
 
 Tras 5 contraseñas erróneas (`MAX_FAILED_LOGINS`) la cuenta (cliente o staff) se bloquea 15 minutos (`LOCK_MS`) por email, sin tener en cuenta quién intenta entrar.
 Quien conozca un email puede enviar 5 intentos cada 15 minutos y mantener bloqueada a esa persona indefinidamente, incluido el titular real de una cuenta de staff.
@@ -51,12 +55,20 @@ que falle si `schema:log` no está vacío.
 
 ### 23. Sin 2FA obligatorio ni cambio forzoso de contraseña temporal
 
+**Resuelto** (`fix/security-accounts`): `staff_users.must_change_password` (true al crear miembros y en `yarn owner:create`, salvo `OWNER_MUST_CHANGE_PASSWORD=false` para CI/smoke) con 403 `PASSWORD_CHANGE_REQUIRED`; `REQUIRE_STAFF_2FA` (por defecto true en producción) con 403 `TWO_FACTOR_SETUP_REQUIRED` para roles con `staff:write`/`settings:write`; banderas `mustChangePassword`/`twoFactorSetupRequired` en login y `/auth/me`. No existe endpoint de restablecimiento de contraseña de un miembro por un tercero: si se añade, debe poner `must_change_password = true`.
+
+Texto original del hallazgo:
+
 El 2FA (TOTP) del staff es opcional, incluso para `owner`/`admin`. Las cuentas creadas por un administrador o con `owner:create` usan una contraseña temporal que
 el usuario no está obligado a cambiar: puede seguir usándola indefinidamente y conocerla otra persona (quien la creó, el canal por el que se envió).
 **Propuesta**: columna `must_change_password` (se pone al crear/restablecer por un tercero y obliga a cambiarla antes de cualquier otra llamada) y política
 `REQUIRE_2FA_ROLES` para obligar a activar TOTP a los roles privilegiados tras el primer acceso.
 
 ### 25. Oráculo de códigos de descuento
+
+**Resuelto** (`fix/security-accounts`): vencido/agotado/inactivo/no vigente/inexistente responden igual (`reason: not_found`; el motivo real se registra); `min_subtotal` y `already_used` solo con código válido y activo; límite 10/min por visitante+carrito y 40/min por visitante en `PUT …/discount` (en memoria por instancia). Nota: la cotización/checkout con código comparte los mensajes uniformes, pero solo el PUT tiene el límite extra.
+
+Texto original del hallazgo:
 
 `PUT /storefront/carts/:id/discount` y la cotización (`GET /storefront/carts/:id`) responden con motivos distintos (`not_found`, `expired`, `usage_limit_reached`,
 `already_used`, `min_subtotal`…) y con códigos 422 diferentes. Cualquiera puede probar códigos (el límite de peticiones es solo por IP) y distinguir entre

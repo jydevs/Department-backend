@@ -26,7 +26,7 @@ yarn smoke                      # terminal 3: recorrido completo (ver "Smoke")
 ```
 
 Swagger UI: `http://localhost:4000/docs` (JSON en `/docs-json`; desactivado por defecto con `NODE_ENV=production`).
-`yarn owner:create` es idempotente y usa `OWNER_EMAIL`/`OWNER_PASSWORD` del entorno o del `.env`.
+`yarn owner:create` es idempotente y usa `OWNER_EMAIL`/`OWNER_PASSWORD` del entorno o del `.env`. El owner creado debe cambiar la contraseña en su primer login (`OWNER_MUST_CHANGE_PASSWORD=false` solo para CI/smoke) y, con `REQUIRE_STAFF_2FA` (activo por defecto en producción), activar el 2FA.
 Contenido del sitio: `SEED_DEFAULT_CONTENT=true` (por defecto) crea al arrancar los documentos publicados `settings/site`, `menu/main|footer`, `template/layout|home|collection|product|search|cart|404` y las páginas `community` y `contact` solo si no existen (ver `docs/CMS-SECTIONS.md`). Si la BD es WIN1252 (Postgres embebido en Windows), los caracteres fuera de ese código no se pueden guardar; créala en UTF8.
 
 ## Scripts
