@@ -45,6 +45,8 @@ export class CustomerErasureService {
       [customerId, email, now],
     );
 
+    await manager.query("DELETE FROM login_attempts WHERE scope = 'customer' AND account_id = $1", [customerId]);
+
     // remember only the hash of the erased address so imports / registrations cannot resurrect the data subject
     await manager.query("INSERT INTO erasure_suppressions (email_hash, created_at) VALUES ($1, $2) ON CONFLICT (email_hash) DO NOTHING", [
       emailSuppressionHash(originalEmail),

@@ -5,6 +5,7 @@ import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { Public } from "../../common/auth/decorators";
 import { AppException } from "../../common/errors/app-exception";
+import { visitorIp } from "../../common/throttle/storefront-throttler.guard";
 import { ENV } from "../../config/config.module";
 import type { Env } from "../../config/env";
 import {
@@ -48,8 +49,9 @@ export class CustomerAuthController {
   @HttpCode(200)
   @Throttle({ default: { limit: authThrottleLimit, ttl: 60_000 } })
   @ApiOperation({ summary: "Log in with email and password" })
-  async login(@Body() dto: CustomerLoginDto, @Res({ passthrough: true }) res: Response): Promise<CustomerLoginResponse> {
-    const { refreshToken, ...result } = await this.auth.login(dto.email, dto.password);
+  async login(@Body() dto: CustomerLoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<CustomerLoginResponse> {
+    // behind the Next server the visitor IP comes in X-Visitor-Ip (only when STOREFRONT_SERVER_KEY is presented)
+    const { refreshToken, ...result } = await this.auth.login(dto.email, dto.password, visitorIp(req, this.env.STOREFRONT_SERVER_KEY));
     this.setRefreshCookie(res, refreshToken);
     res.setHeader("Cache-Control", "no-store");
     return result;

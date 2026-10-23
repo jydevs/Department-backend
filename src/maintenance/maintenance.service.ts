@@ -99,6 +99,7 @@ export class MaintenanceService implements OnModuleInit, OnModuleDestroy {
       ["email_outbox.purge", () => this.purgeOutbox(ago(30))],
       ["email_outbox.blank_bodies", () => this.blankOutboxBodies(ago(7))],
       ["content_versions", () => this.purgeContentVersions()],
+      ["login_attempts", () => this.purgeLoginAttempts(ago(30))],
       ["import_jobs", () => this.purgeImportJobs(ago(180))],
       ["orders.anonymize_closed", () => this.anonymizeOrders()],
     ];
@@ -136,6 +137,18 @@ export class MaintenanceService implements OnModuleInit, OnModuleDestroy {
       `WITH d AS (
          DELETE FROM ${table} WHERE id IN (
            SELECT id FROM ${table} WHERE expires_at < $1 OR revoked_at < $1 ORDER BY id LIMIT $2 FOR UPDATE SKIP LOCKED
+         ) RETURNING 1
+       ) SELECT count(*)::int AS n FROM d`,
+      [before, BATCH],
+    );
+  }
+
+  /** Failure/success marks of the per-(account, IP) login accounting untouched for 30 days. */
+  private purgeLoginAttempts(before: Date): Promise<number> {
+    return this.loop(
+      `WITH d AS (
+         DELETE FROM login_attempts WHERE ctid IN (
+           SELECT ctid FROM login_attempts WHERE updated_at < $1 LIMIT $2 FOR UPDATE SKIP LOCKED
          ) RETURNING 1
        ) SELECT count(*)::int AS n FROM d`,
       [before, BATCH],

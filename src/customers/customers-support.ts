@@ -13,8 +13,6 @@ import type {
 } from "./dto/customers.dto";
 
 export const MAX_ADDRESSES = 10;
-export const MAX_FAILED_LOGINS = 5;
-export const LOCK_MS = 15 * 60 * 1000;
 
 interface QueryRunnerLike {
   query(sql: string, params?: unknown[]): Promise<unknown>;
@@ -25,18 +23,6 @@ export async function queryRows<T>(runner: QueryRunnerLike, sql: string, params:
   const result = await runner.query(sql, params);
   if (Array.isArray(result) && result.length === 2 && Array.isArray(result[0]) && typeof result[1] === "number") return result[0] as T[];
   return result as T[];
-}
-
-/**
- * Count a failed password attempt in ONE atomic statement (parallel guesses cannot undercount) and lock after 5.
- * An expired lock restarts the count at 1. Shared by login, change-password and account deletion.
- */
-export async function recordFailedPassword(runner: QueryRunnerLike, customerId: string, now: Date): Promise<void> {
-  const next = "CASE WHEN locked_until IS NOT NULL AND locked_until <= $2 THEN 1 ELSE failed_login_count + 1 END";
-  await runner.query(
-    `UPDATE customers SET failed_login_count = ${next}, locked_until = CASE WHEN (${next}) >= ${MAX_FAILED_LOGINS} THEN $3::timestamptz ELSE NULL END WHERE id = $1`,
-    [customerId, now, new Date(now.getTime() + LOCK_MS)],
-  );
 }
 
 /**

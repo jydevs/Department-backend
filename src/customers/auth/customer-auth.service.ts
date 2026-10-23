@@ -14,7 +14,8 @@ import { PasswordService } from "../../identity/auth/password.service";
 import { MailService } from "../../mail/mail.service";
 import type { CustomerLoginResponse, CustomerRefreshResponse, RegisterInput } from "../dto/customers.dto";
 import { Customer, CustomerRefreshToken } from "../entities";
-import { isEmailSuppressed, linkGuestOrders, queryRows, recordFailedPassword, toProfile } from "../customers-support";
+import { isEmailSuppressed, linkGuestOrders, queryRows, toProfile } from "../customers-support";
+import { clearLoginFailures, isLoginBlocked, recordLoginFailure, recordLoginSuccess } from "../../common/auth/login-attempts";
 import { CustomerTokenService } from "./customer-token.service";
 
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -122,18 +123,20 @@ export class CustomerAuthService implements OnModuleInit {
   /* ── login / refresh / logout ─────────────────────────── */
 
   /** Every rejection (unknown email, bad password, inactive, locked, guest) looks the same to the caller. */
-  async login(email: string, password: string): Promise<CustomerLoginResponse & { refreshToken: string }> {
+  async login(email: string, password: string, ip?: string): Promise<CustomerLoginResponse & { refreshToken: string }> {
     const now = this.clock.now();
     const customer = await this.customers.findOne({ where: { email: email.toLowerCase() } });
 
     // always run argon2, even for unknown emails, so timing does not reveal which emails exist
     const passwordOk = await this.passwords.verify(password, customer?.passwordHash ?? this.dummyHash);
-    const locked = !!customer?.lockedUntil && customer.lockedUntil > now;
+    const clientIp = ip ?? RequestContextStore.get()?.ip;
+    // failures are counted per (account, IP): a stranger failing from elsewhere cannot lock the customer out of their usual IP
+    const locked = !!customer && (await isLoginBlocked(this.dataSource, "customer", customer.id, clientIp, now));
     const usable = !!customer && !!customer.passwordHash && customer.isActive && !customer.anonymizedAt;
 
     if (!customer || !usable || !passwordOk || locked) {
-      // a locked account is not touched again: attackers must not be able to extend the lock forever
-      if (customer && usable && !locked) await recordFailedPassword(this.dataSource, customer.id, now);
+      // a blocked (account, IP) is not touched again: attackers must not be able to extend the lock forever
+      if (customer && usable && !locked) await recordLoginFailure(this.dataSource, "customer", customer.id, clientIp, now);
       throw AppException.unauthorized("Invalid credentials", "INVALID_CREDENTIALS");
     }
 
@@ -141,7 +144,8 @@ export class CustomerAuthService implements OnModuleInit {
     const context = RequestContextStore.get();
 
     await this.transactions.run(async (manager) => {
-      await manager.update(Customer, { id: customer.id }, { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now });
+      await manager.update(Customer, { id: customer.id }, { lastLoginAt: now });
+      await recordLoginSuccess(manager, "customer", customer.id, clientIp, now);
       await manager.insert(CustomerRefreshToken, {
         id: uuidv7(),
         customerId: customer.id,
@@ -280,6 +284,7 @@ export class CustomerAuthService implements OnModuleInit {
       const customer = updated[0];
       if (!customer) throw AppException.badRequest("INVALID_TOKEN", "The link is invalid or has expired"); // rolls the token back too
 
+      await clearLoginFailures(manager, "customer", customer.id);
       await manager.query("UPDATE customer_refresh_tokens SET revoked_at = $2 WHERE customer_id = $1 AND revoked_at IS NULL", [customer.id, now]);
       await manager.query(
         "UPDATE customer_tokens SET used_at = $3 WHERE customer_id = $1 AND type = $2 AND used_at IS NULL",
@@ -313,6 +318,7 @@ export class CustomerAuthService implements OnModuleInit {
       const customer = updated[0];
       if (!customer) throw AppException.badRequest("INVALID_TOKEN", "The link is invalid or has expired");
 
+      await clearLoginFailures(manager, "customer", customer.id);
       await manager.query("UPDATE customer_refresh_tokens SET revoked_at = $2 WHERE customer_id = $1 AND revoked_at IS NULL", [customer.id, now]);
       await manager.query("UPDATE customer_tokens SET used_at = $2 WHERE customer_id = $1 AND used_at IS NULL", [customer.id, now]);
       await linkGuestOrders(manager, customer.id, customer.email);

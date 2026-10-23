@@ -3,6 +3,8 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Not, Repository } from "typeorm";
 import { Clock } from "../common/clock/clock";
 import { AppException } from "../common/errors/app-exception";
+import { RequestContextStore } from "../common/context/request-context";
+import { clearLoginFailures, isLoginBlocked, recordLoginFailure } from "../common/auth/login-attempts";
 import { OffsetPage, toOffsetPage } from "../common/pagination/pagination";
 import { AuditService } from "../audit/audit.service";
 import { Order } from "../commerce/entities/order.entity";
@@ -22,7 +24,7 @@ import type {
 } from "./dto/customers.dto";
 import { Customer, CustomerAddress, CustomerRefreshToken } from "./entities";
 import { CustomerErasureService } from "./customer-erasure.service";
-import { MAX_ADDRESSES, queryRows, recordFailedPassword, toAddressDto, toOrderSummary, toProfile, toPublicOrder } from "./customers-support";
+import { MAX_ADDRESSES, queryRows, toAddressDto, toOrderSummary, toProfile, toPublicOrder } from "./customers-support";
 
 const EXPORT_MAX_ORDERS = 1000;
 
@@ -75,6 +77,7 @@ export class CustomersAccountService {
 
     await this.transactions.run(async (manager) => {
       await manager.query("UPDATE customers SET password_hash = $2, failed_login_count = 0, locked_until = NULL, version = version + 1 WHERE id = $1", [customerId, newHash]);
+      await clearLoginFailures(manager, "customer", customerId);
       await manager.query("UPDATE customer_refresh_tokens SET revoked_at = $2 WHERE customer_id = $1 AND revoked_at IS NULL", [customerId, now]);
       await this.audit.record({ action: "CUSTOMER_PASSWORD_CHANGED", entityType: "Customer", entityId: customerId }, manager);
     });
@@ -284,10 +287,11 @@ export class CustomersAccountService {
   private async confirmPassword(customerId: string, password: string, message: string): Promise<void> {
     const customer = await this.requireCustomer(customerId);
     const now = this.clock.now();
-    const locked = !!customer.lockedUntil && customer.lockedUntil > now;
+    const ip = RequestContextStore.get()?.ip;
+    const locked = await isLoginBlocked(this.customers.manager, "customer", customerId, ip, now);
     const ok = !!customer.passwordHash && (await this.passwords.verify(password, customer.passwordHash));
     if (locked || !ok) {
-      if (!locked) await recordFailedPassword(this.customers.manager, customerId, now);
+      if (!locked) await recordLoginFailure(this.customers.manager, "customer", customerId, ip, now);
       throw AppException.badRequest("INVALID_PASSWORD", message);
     }
   }
