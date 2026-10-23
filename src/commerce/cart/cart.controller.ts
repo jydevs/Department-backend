@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
-import type { Request } from "express";
+import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Patch, Post, Put, Query, Req, Res } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { ApiHeader } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { AppException } from "../../common/errors/app-exception";
@@ -84,9 +84,15 @@ export class CartController {
     @CartToken() token: string,
     @Body() body: SetCartDiscountDto,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<CartResponse> {
     const ip = visitorIp(req, this.env.STOREFRONT_SERVER_KEY);
-    if (!this.discountPerCart.hit(`${ip}|${id}`) || !this.discountPerIp.hit(ip)) {
+    // per-visitor cap first (one key per visitor); the per-cart key is only created once the visitor is within its cap,
+    // so spraying random cart ids cannot fill the map with keys
+    const cartKey = `${ip}|${id}`;
+    const limitedBy = !this.discountPerIp.hit(ip) ? ([this.discountPerIp, ip] as const) : !this.discountPerCart.hit(cartKey) ? ([this.discountPerCart, cartKey] as const) : null;
+    if (limitedBy) {
+      res.setHeader("Retry-After", String(limitedBy[0].retryAfterSeconds(limitedBy[1])));
       throw new AppException(429, "RATE_LIMITED", "Too many discount attempts, try again in a minute");
     }
     return this.carts.setDiscount(id, token, body.code, body.email);

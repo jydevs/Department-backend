@@ -24,8 +24,23 @@ export class RateWindow {
     return cur.count <= this.limit;
   }
 
+  /** Whole seconds (>= 1) until the key's window resets; 1 when the key has no window. For the Retry-After header. */
+  retryAfterSeconds(key: string, now = Date.now()): number {
+    const cur = this.hits.get(key);
+    return cur && cur.resetAt > now ? Math.max(1, Math.ceil((cur.resetAt - now) / 1000)) : 1;
+  }
+
+  /**
+   * Drop expired windows; if the map is still full, evict the OLDEST entries (Map keeps insertion order) instead of
+   * clearing everything: an attacker spraying keys must not reset the counters of honest, currently limited visitors.
+   */
   private prune(now: number): void {
     for (const [k, v] of this.hits) if (v.resetAt <= now) this.hits.delete(k);
-    if (this.hits.size >= RateWindow.MAX_KEYS) this.hits.clear();
+    let excess = this.hits.size - Math.floor(RateWindow.MAX_KEYS * 0.9);
+    if (excess <= 0) return;
+    for (const k of this.hits.keys()) {
+      this.hits.delete(k);
+      if (--excess <= 0) break;
+    }
   }
 }

@@ -250,10 +250,12 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     const body = await r.json();
     assert(r.status === 422 && body.details?.reason === "not_found", `expired code → ${r.status} ${JSON.stringify(body)}`);
     let limited = 0;
+    let retryAfter = null;
     for (let i = 0; i < 12; i++) {
       const x = await call("PUT", `/storefront/carts/${c.id}/discount`, { code: `GUESS${i}` }, undefined, c.hdr);
-      if (x.status === 429) limited++;
+      if (x.status === 429) { limited++; retryAfter = x.headers.get("retry-after"); }
     }
+    assert(Number(retryAfter) >= 1 && Number(retryAfter) <= 60, `429 RATE_LIMITED must carry Retry-After (1-60 s), got ${retryAfter}`);
     assert(limited >= 2, `expected the 11th+ attempts on one cart to be 429, got ${limited}`);
   });
 
