@@ -12,6 +12,7 @@ import { affectedCount } from "../../common/sql/query-result";
 import { clearLoginFailures, isLoginBlocked, loginBlock, recordLoginFailure, recordLoginSuccess } from "../../common/auth/login-attempts";
 import { TransactionService } from "../../database/transaction.service";
 import { RefreshToken, StaffUser } from "../entities";
+import { TWO_FACTOR_REQUIRED_PERMISSIONS } from "../permissions";
 import { PasswordService } from "./password.service";
 import { TokenService, type JWTPayload } from "./token.service";
 import { TOTPService } from "./totp.service";
@@ -127,10 +128,10 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  /** REQUIRE_STAFF_2FA: roles that manage staff or settings (owner/admin) must have 2FA on. */
+  /** REQUIRE_STAFF_2FA: roles holding any of TWO_FACTOR_REQUIRED_PERMISSIONS (owner/admin by default) must have 2FA on. */
   twoFactorSetupRequired(user: { totpEnabled: boolean }, permissions: readonly string[]): boolean {
     if (!this.env.REQUIRE_STAFF_2FA || user.totpEnabled) return false;
-    return permissions.includes("staff:write") || permissions.includes("settings:write");
+    return TWO_FACTOR_REQUIRED_PERMISSIONS.some((p) => permissions.includes(p));
   }
 
   /**

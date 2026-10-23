@@ -55,7 +55,7 @@ que falle si `schema:log` no está vacío.
 
 ### 23. Sin 2FA obligatorio ni cambio forzoso de contraseña temporal
 
-**Resuelto** (`fix/security-accounts`): `staff_users.must_change_password` (true al crear miembros y en `yarn owner:create`, salvo `OWNER_MUST_CHANGE_PASSWORD=false` para CI/smoke) con 403 `PASSWORD_CHANGE_REQUIRED`; `REQUIRE_STAFF_2FA` (por defecto true en producción) con 403 `TWO_FACTOR_SETUP_REQUIRED` para roles con `staff:write`/`settings:write`; banderas `mustChangePassword`/`twoFactorSetupRequired` en login y `/auth/me`. No existe endpoint de restablecimiento de contraseña de un miembro por un tercero: si se añade, debe poner `must_change_password = true`.
+**Resuelto** (`fix/security-accounts`): `staff_users.must_change_password` (true al crear miembros y en `yarn owner:create`, salvo `OWNER_MUST_CHANGE_PASSWORD=false` para CI/smoke) con 403 `PASSWORD_CHANGE_REQUIRED`; `REQUIRE_STAFF_2FA` (por defecto true en producción) con 403 `TWO_FACTOR_SETUP_REQUIRED` para roles con algún permiso sensible (`TWO_FACTOR_REQUIRED_PERMISSIONS`: roles:write, staff:write, settings:write, orders:payments, orders:refunds, import:write, customers:write, discounts:write); banderas `mustChangePassword`/`twoFactorSetupRequired` en login y `/auth/me`. No existe endpoint de restablecimiento de contraseña de un miembro por un tercero: si se añade, debe poner `must_change_password = true`.
 
 Texto original del hallazgo:
 

@@ -114,7 +114,7 @@ const schema = z
       .transform((v) => v === "true" || v === "1"),
 
     /**
-     * Owners/admins (roles with staff:write or settings:write) must enrol 2FA before using the panel.
+     * Staff whose role holds a sensitive permission (TWO_FACTOR_REQUIRED_PERMISSIONS in identity/permissions.ts: owner/admin today) must enrol 2FA before using the panel.
      * Default: true in production, false elsewhere (so dev/CI/smokes work without an authenticator).
      */
     REQUIRE_STAFF_2FA: z.enum(["true", "false", "1", "0"]).optional(),
