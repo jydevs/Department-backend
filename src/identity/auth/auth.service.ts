@@ -309,6 +309,11 @@ export class AuthService implements OnModuleInit {
       throw AppException.unauthorized("Current password is incorrect", "INVALID_CREDENTIALS");
     }
 
+    // reusing the temporary password defeats must_change_password: the new one has to differ
+    if (newPassword === currentPassword) {
+      throw new AppException(422, "PASSWORD_UNCHANGED", "The new password must be different from the current one");
+    }
+
     const newHash = await this.passwordService.hash(newPassword);
     const now = this.clock.now();
 

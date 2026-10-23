@@ -106,6 +106,9 @@ export async function identityChecks({ base, check, assert }) {
     const blocked = await get("/admin/products", firstBody.accessToken);
     const blockedBody = await blocked.json();
     assert(blocked.status === 403 && blockedBody.code === "PASSWORD_CHANGE_REQUIRED", `pending password → ${blocked.status} ${JSON.stringify(blockedBody)}`);
+    const same = await post("/auth/change-password", { current: temp, new: temp }, firstBody.accessToken);
+    const sameBody = await same.json();
+    assert(same.status === 422 && sameBody.code === "PASSWORD_UNCHANGED", `new == current → ${same.status} ${JSON.stringify(sameBody)}`);
     const newPassword = `Smoke-${Date.now()}-Pass!`;
     const changed = await post("/auth/change-password", { current: temp, new: newPassword }, firstBody.accessToken);
     assert(changed.status < 300, `change-password → ${changed.status}`);
