@@ -4,7 +4,7 @@ import { DataSource, EntityManager } from "typeorm";
 import { AppException } from "../../common/errors/app-exception";
 import { Clock } from "../../common/clock/clock";
 import { InventoryService } from "../../inventory/inventory.service";
-import { zoneCoversDepartment } from "./department";
+import { applicableZoneDepartments, zoneCoversDepartment } from "./department";
 import { divRoundHalfUp } from "./rounding";
 import type { DiscountInvalidReason, Quote, QuoteDiscount, QuoteInput, QuoteLine, QuoteWarning } from "./pricing.types";
 
@@ -161,7 +161,17 @@ export class PricingService {
         [input.shippingRateId],
       );
       const rate = rows[0];
-      if (!rate || !zoneCoversDepartment(rate.departments, input.department)) {
+      let applicable = !!rate && zoneCoversDepartment(rate.departments, input.department);
+      if (rate && applicable) {
+        // a more specific zone (e.g. Bogotá) takes precedence over the catch-all "*" zone
+        const zones = await em.query<{ departments: string[] }[]>(
+          `SELECT DISTINCT z.departments FROM shipping_rates r JOIN shipping_zones z ON z.id = r.zone_id
+           WHERE r.is_active = true AND z.is_active = true`,
+        );
+        const allowed = applicableZoneDepartments(zones.map((z) => z.departments), input.department);
+        applicable = allowed.some((z) => z.length === rate.departments.length && z.every((x, k) => x === rate.departments[k]));
+      }
+      if (!rate || !applicable) {
         throw new AppException(422, "SHIPPING_RATE_INVALID", "The shipping rate is not available for this destination");
       }
       shippingRate = { id: rate.id, name: rate.name };

@@ -76,6 +76,20 @@ export async function commerceChecks({ base, check, assert, ownerToken, analystT
     assert(bad.status === 422, `unknown code → ${bad.status}`);
   });
 
+  await check("commerce: a zone that names the department wins over the catch-all zone", async () => {
+    const zone = await ok(await call("POST", "/admin/shipping/zones", { name: `Smoke Bogotá ${stamp}`, departments: ["Bogotá D.C."] }, ownerToken), "bogotá zone");
+    const bogota = await ok(await call("POST", "/admin/shipping/rates", { zoneId: zone.id, name: "Bogotá", price: 8000 }, ownerToken), "bogotá rate");
+    const offered = async (department) => items(await ok(await call("GET", `/storefront/shipping-rates?department=${encodeURIComponent(department)}&cartId=${cart.id}`, undefined, undefined, cart.hdr), "rates")).map((r) => r.id);
+    const inBogota = await offered("Bogotá D.C.");
+    assert(inBogota.includes(bogota.id) && !inBogota.includes(rateId), "Bogotá must see only its own rate");
+    const inAntioquia = await offered("Antioquia");
+    assert(inAntioquia.includes(rateId) && !inAntioquia.includes(bogota.id), "Antioquia must see only the nationwide rate");
+    const wrong = await call("POST", "/storefront/checkouts", { cartId: cart.id, email: `x-${stamp}@dept.test`, shippingAddress: { ...address, department: "Bogotá D.C." }, shippingRateId: rateId }, undefined, { ...cart.hdr, "idempotency-key": `idem-${stamp}-zone` });
+    assert(wrong.status === 422, `nationwide rate for Bogotá should be rejected, got ${wrong.status}`);
+    await call("DELETE", `/admin/shipping/rates/${bogota.id}`, undefined, ownerToken);
+    await call("DELETE", `/admin/shipping/zones/${zone.id}`, undefined, ownerToken);
+  });
+
   await check("commerce: checkout is idempotent; other body with same key → 422; stock is reserved", async () => {
     const key = `idem-${stamp}-1`;
     const r1 = await doCheckout(cart, key);
